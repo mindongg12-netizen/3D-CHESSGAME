@@ -1,0 +1,913 @@
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Canvas } from '@react-three/fiber';
+import { OrbitControls } from '@react-three/drei';
+import { Chess } from 'chess.js';
+import { ref, set, onValue, off, remove } from 'firebase/database';
+import { signInAnonymously } from 'firebase/auth';
+import { db, auth } from './firebase';
+import type { Room, ChessPiece } from './types';
+import './App.css';
+
+// Generate 5-digit room code
+const generateRoomCode = (): string => {
+  return Math.floor(10000 + Math.random() * 90000).toString();
+};
+
+// 3D Chess Piece Component
+function ChessPiece3D({
+  piece,
+  position,
+  isSelected,
+  isValidMove,
+  onClick
+}: {
+  piece: ChessPiece | null;
+  position: [number, number, number];
+  isSelected: boolean;
+  isValidMove: boolean;
+  onClick: () => void;
+}) {
+  // Enhanced colors with better contrast
+  const isWhite = piece?.color === 'w';
+  const baseColor = isWhite ? '#faf0e6' : '#8b4513';  // Saddle brown - more visible
+  const accentColor = isWhite ? '#d4c4b0' : '#a0522d'; // Sienna accent
+  const highlightColor = isWhite ? '#ffffff' : '#cd853f'; // Peru/tan highlight
+
+  // Material properties - black pieces more metallic/shiny
+  const metalness = isWhite ? 0.1 : 0.7;
+  const roughness = isWhite ? 0.4 : 0.15;
+  const emissive = isSelected ? '#22ff22' : isValidMove ? '#4488ff' : (isWhite ? '#000000' : '#2a1506');
+  const emissiveIntensity = isSelected ? 0.4 : isValidMove ? 0.3 : (isWhite ? 0 : 0.15);
+
+  const getPieceGeometry = (type: string) => {
+    switch (type) {
+      case 'k': // King - tallest piece with prominent cross
+        return (
+          <group scale={1.3}>
+            {/* Base - largest */}
+            <mesh position={[0, 0.1, 0]} castShadow>
+              <cylinderGeometry args={[0.4, 0.44, 0.2, 32]} />
+              <meshStandardMaterial color={baseColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
+            </mesh>
+            {/* Lower body */}
+            <mesh position={[0, 0.3, 0]} castShadow>
+              <cylinderGeometry args={[0.32, 0.4, 0.24, 32]} />
+              <meshStandardMaterial color={baseColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
+            </mesh>
+            {/* Middle body */}
+            <mesh position={[0, 0.55, 0]} castShadow>
+              <cylinderGeometry args={[0.24, 0.32, 0.36, 32]} />
+              <meshStandardMaterial color={accentColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
+            </mesh>
+            {/* Neck ring */}
+            <mesh position={[0, 0.76, 0]} castShadow>
+              <torusGeometry args={[0.22, 0.05, 16, 32]} />
+              <meshStandardMaterial color={highlightColor} metalness={0.5} roughness={0.3} emissive={emissive} emissiveIntensity={emissiveIntensity} />
+            </mesh>
+            {/* Upper body */}
+            <mesh position={[0, 0.92, 0]} castShadow>
+              <cylinderGeometry args={[0.18, 0.24, 0.26, 32]} />
+              <meshStandardMaterial color={baseColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
+            </mesh>
+            {/* Cross vertical */}
+            <mesh position={[0, 1.18, 0]} castShadow>
+              <boxGeometry args={[0.08, 0.32, 0.08]} />
+              <meshStandardMaterial color={highlightColor} metalness={0.6} roughness={0.2} emissive={emissive} emissiveIntensity={emissiveIntensity} />
+            </mesh>
+            {/* Cross horizontal */}
+            <mesh position={[0, 1.14, 0]} castShadow>
+              <boxGeometry args={[0.24, 0.07, 0.08]} />
+              <meshStandardMaterial color={highlightColor} metalness={0.6} roughness={0.2} emissive={emissive} emissiveIntensity={emissiveIntensity} />
+            </mesh>
+          </group>
+        );
+      case 'q': // Queen - second tallest with crown
+        return (
+          <group scale={1.3}>
+            {/* Base */}
+            <mesh position={[0, 0.1, 0]} castShadow>
+              <cylinderGeometry args={[0.38, 0.42, 0.2, 32]} />
+              <meshStandardMaterial color={baseColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
+            </mesh>
+            {/* Lower body */}
+            <mesh position={[0, 0.3, 0]} castShadow>
+              <cylinderGeometry args={[0.3, 0.38, 0.24, 32]} />
+              <meshStandardMaterial color={baseColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
+            </mesh>
+            {/* Middle body */}
+            <mesh position={[0, 0.54, 0]} castShadow>
+              <cylinderGeometry args={[0.22, 0.3, 0.34, 32]} />
+              <meshStandardMaterial color={accentColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
+            </mesh>
+            {/* Neck ring */}
+            <mesh position={[0, 0.74, 0]} castShadow>
+              <torusGeometry args={[0.2, 0.045, 16, 32]} />
+              <meshStandardMaterial color={highlightColor} metalness={0.5} roughness={0.3} emissive={emissive} emissiveIntensity={emissiveIntensity} />
+            </mesh>
+            {/* Crown base */}
+            <mesh position={[0, 0.9, 0]} castShadow>
+              <cylinderGeometry args={[0.22, 0.18, 0.24, 32]} />
+              <meshStandardMaterial color={baseColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
+            </mesh>
+            {/* Crown spikes */}
+            {[0, 1, 2, 3, 4, 5].map((i) => (
+              <mesh key={i} position={[Math.cos(i * Math.PI / 3) * 0.14, 1.08, Math.sin(i * Math.PI / 3) * 0.14]} castShadow>
+                <coneGeometry args={[0.05, 0.12, 8]} />
+                <meshStandardMaterial color={highlightColor} metalness={0.6} roughness={0.2} emissive={emissive} emissiveIntensity={emissiveIntensity} />
+              </mesh>
+            ))}
+            {/* Crown ball */}
+            <mesh position={[0, 1.12, 0]} castShadow>
+              <sphereGeometry args={[0.12, 24, 24]} />
+              <meshStandardMaterial color={highlightColor} metalness={0.6} roughness={0.2} emissive={emissive} emissiveIntensity={emissiveIntensity} />
+            </mesh>
+          </group>
+        );
+      case 'r': // Rook - castle tower
+        return (
+          <group>
+            {/* Base */}
+            <mesh position={[0, 0.08, 0]} castShadow>
+              <cylinderGeometry args={[0.32, 0.35, 0.16, 32]} />
+              <meshStandardMaterial color={baseColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
+            </mesh>
+            {/* Lower body */}
+            <mesh position={[0, 0.25, 0]} castShadow>
+              <cylinderGeometry args={[0.26, 0.32, 0.2, 32]} />
+              <meshStandardMaterial color={baseColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
+            </mesh>
+            {/* Tower body */}
+            <mesh position={[0, 0.48, 0]} castShadow>
+              <cylinderGeometry args={[0.22, 0.26, 0.36, 32]} />
+              <meshStandardMaterial color={accentColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
+            </mesh>
+            {/* Top platform */}
+            <mesh position={[0, 0.7, 0]} castShadow>
+              <cylinderGeometry args={[0.28, 0.22, 0.1, 32]} />
+              <meshStandardMaterial color={baseColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
+            </mesh>
+            {/* Battlements */}
+            {[0, 1, 2, 3].map((i) => (
+              <mesh key={i} position={[Math.cos(i * Math.PI / 2) * 0.2, 0.82, Math.sin(i * Math.PI / 2) * 0.2]} castShadow>
+                <boxGeometry args={[0.12, 0.14, 0.12]} />
+                <meshStandardMaterial color={highlightColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
+              </mesh>
+            ))}
+          </group>
+        );
+      case 'b': // Bishop - taller with distinctive pointed mitre
+        return (
+          <group>
+            {/* Base - wider than pawn */}
+            <mesh position={[0, 0.1, 0]} castShadow>
+              <cylinderGeometry args={[0.34, 0.38, 0.2, 32]} />
+              <meshStandardMaterial color={baseColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
+            </mesh>
+            {/* Lower body */}
+            <mesh position={[0, 0.28, 0]} castShadow>
+              <cylinderGeometry args={[0.26, 0.34, 0.2, 32]} />
+              <meshStandardMaterial color={baseColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
+            </mesh>
+            {/* Middle body - taller */}
+            <mesh position={[0, 0.52, 0]} castShadow>
+              <cylinderGeometry args={[0.16, 0.26, 0.32, 32]} />
+              <meshStandardMaterial color={accentColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
+            </mesh>
+            {/* Neck ring */}
+            <mesh position={[0, 0.7, 0]} castShadow>
+              <torusGeometry args={[0.14, 0.035, 16, 32]} />
+              <meshStandardMaterial color={highlightColor} metalness={0.5} roughness={0.3} emissive={emissive} emissiveIntensity={emissiveIntensity} />
+            </mesh>
+            {/* Head - pointed mitre shape */}
+            <mesh position={[0, 0.85, 0]} castShadow>
+              <coneGeometry args={[0.18, 0.35, 24]} />
+              <meshStandardMaterial color={baseColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
+            </mesh>
+            {/* Mitre slit - distinctive marking */}
+            <mesh position={[0, 0.88, 0.08]} rotation={[0.3, 0, 0]} castShadow>
+              <boxGeometry args={[0.04, 0.25, 0.12]} />
+              <meshStandardMaterial color={isWhite ? '#1a1a1a' : '#000000'} metalness={0.1} roughness={0.8} />
+            </mesh>
+            {/* Top ball */}
+            <mesh position={[0, 1.05, 0]} castShadow>
+              <sphereGeometry args={[0.07, 16, 16]} />
+              <meshStandardMaterial color={highlightColor} metalness={0.6} roughness={0.2} emissive={emissive} emissiveIntensity={emissiveIntensity} />
+            </mesh>
+          </group>
+        );
+      case 'n': // Knight - horse head
+        return (
+          <group>
+            {/* Base */}
+            <mesh position={[0, 0.08, 0]} castShadow>
+              <cylinderGeometry args={[0.3, 0.33, 0.16, 32]} />
+              <meshStandardMaterial color={baseColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
+            </mesh>
+            {/* Lower body */}
+            <mesh position={[0, 0.22, 0]} castShadow>
+              <cylinderGeometry args={[0.22, 0.3, 0.16, 32]} />
+              <meshStandardMaterial color={baseColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
+            </mesh>
+            {/* Neck */}
+            <mesh position={[0, 0.42, 0.05]} rotation={[-0.3, 0, 0]} castShadow>
+              <cylinderGeometry args={[0.12, 0.18, 0.28, 32]} />
+              <meshStandardMaterial color={accentColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
+            </mesh>
+            {/* Head back */}
+            <mesh position={[0, 0.6, 0.1]} rotation={[-0.5, 0, 0]} castShadow>
+              <boxGeometry args={[0.18, 0.28, 0.22]} />
+              <meshStandardMaterial color={baseColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
+            </mesh>
+            {/* Snout */}
+            <mesh position={[0, 0.58, 0.25]} rotation={[-0.2, 0, 0]} castShadow>
+              <boxGeometry args={[0.12, 0.14, 0.2]} />
+              <meshStandardMaterial color={accentColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
+            </mesh>
+            {/* Ears */}
+            <mesh position={[-0.06, 0.75, 0.05]} rotation={[-0.3, -0.2, 0]} castShadow>
+              <coneGeometry args={[0.04, 0.1, 8]} />
+              <meshStandardMaterial color={baseColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
+            </mesh>
+            <mesh position={[0.06, 0.75, 0.05]} rotation={[-0.3, 0.2, 0]} castShadow>
+              <coneGeometry args={[0.04, 0.1, 8]} />
+              <meshStandardMaterial color={baseColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
+            </mesh>
+            {/* Eye */}
+            <mesh position={[0.08, 0.62, 0.18]} castShadow>
+              <sphereGeometry args={[0.025, 12, 12]} />
+              <meshStandardMaterial color={isWhite ? '#1a1a1a' : '#ffffff'} metalness={0.8} roughness={0.1} />
+            </mesh>
+            <mesh position={[-0.08, 0.62, 0.18]} castShadow>
+              <sphereGeometry args={[0.025, 12, 12]} />
+              <meshStandardMaterial color={isWhite ? '#1a1a1a' : '#ffffff'} metalness={0.8} roughness={0.1} />
+            </mesh>
+          </group>
+        );
+      case 'p': // Pawn - simple small piece
+        return (
+          <group>
+            {/* Base */}
+            <mesh position={[0, 0.06, 0]} castShadow>
+              <cylinderGeometry args={[0.25, 0.28, 0.12, 32]} />
+              <meshStandardMaterial color={baseColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
+            </mesh>
+            {/* Lower body */}
+            <mesh position={[0, 0.18, 0]} castShadow>
+              <cylinderGeometry args={[0.18, 0.25, 0.14, 32]} />
+              <meshStandardMaterial color={baseColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
+            </mesh>
+            {/* Middle body */}
+            <mesh position={[0, 0.32, 0]} castShadow>
+              <cylinderGeometry args={[0.1, 0.18, 0.16, 32]} />
+              <meshStandardMaterial color={accentColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
+            </mesh>
+            {/* Neck ring */}
+            <mesh position={[0, 0.42, 0]} castShadow>
+              <torusGeometry args={[0.09, 0.025, 12, 24]} />
+              <meshStandardMaterial color={highlightColor} metalness={0.4} roughness={0.3} emissive={emissive} emissiveIntensity={emissiveIntensity} />
+            </mesh>
+            {/* Head */}
+            <mesh position={[0, 0.52, 0]} castShadow>
+              <sphereGeometry args={[0.12, 24, 24]} />
+              <meshStandardMaterial color={baseColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
+            </mesh>
+          </group>
+        );
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <group position={position} onClick={onClick}>
+      {/* Square highlight */}
+      {(isSelected || isValidMove) && (
+        <mesh position={[0, 0.03, 0]}>
+          <boxGeometry args={[0.9, 0.02, 0.9]} />
+          <meshBasicMaterial
+            color={isSelected ? '#00ff00' : '#4444ff'}
+            transparent
+            opacity={0.6}
+          />
+        </mesh>
+      )}
+      {/* Chess piece */}
+      {piece && getPieceGeometry(piece.type)}
+    </group>
+  );
+}
+
+// 3D Chess Board Component
+function ChessBoard3D({
+  pieces,
+  selectedSquare,
+  validMoves,
+  onSquareClick,
+  myColor
+}: {
+  pieces: ChessPiece[];
+  selectedSquare: string | null;
+  validMoves: string[];
+  onSquareClick: (square: string) => void;
+  myColor: 'white' | 'black';
+}) {
+  const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+  const ranks = ['1', '2', '3', '4', '5', '6', '7', '8'];
+
+  // Flip board if playing as black
+  const displayFiles = myColor === 'black' ? [...files].reverse() : files;
+  const displayRanks = myColor === 'black' ? ranks : [...ranks].reverse();
+
+  const getPieceAtSquare = (square: string): ChessPiece | null => {
+    return pieces.find(p => p.square === square) || null;
+  };
+
+  return (
+    <group>
+      {/* Board base */}
+      <mesh position={[0, -0.1, 0]} receiveShadow>
+        <boxGeometry args={[9, 0.2, 9]} />
+        <meshStandardMaterial color="#5c3d2e" />
+      </mesh>
+
+      {/* Squares and pieces */}
+      {displayRanks.map((rank, ri) =>
+        displayFiles.map((file, fi) => {
+          const square = `${file}${rank}`;
+          const isLight = (fi + ri) % 2 === 0;
+          const x = fi - 3.5;
+          const z = ri - 3.5;
+          const piece = getPieceAtSquare(square);
+          const isSelected = selectedSquare === square;
+          const isValidMove = validMoves.includes(square);
+
+          return (
+            <group key={square}>
+              {/* Square */}
+              <mesh
+                position={[x, 0.005, z]}
+                onClick={() => onSquareClick(square)}
+              >
+                <boxGeometry args={[0.98, 0.01, 0.98]} />
+                <meshStandardMaterial color={isLight ? '#f0d9b5' : '#b58863'} />
+              </mesh>
+
+              {/* Piece */}
+              <ChessPiece3D
+                piece={piece}
+                position={[x, 0, z]}
+                isSelected={isSelected}
+                isValidMove={isValidMove}
+                onClick={() => onSquareClick(square)}
+              />
+            </group>
+          );
+        })
+      )}
+    </group>
+  );
+}
+
+// Timer Component
+function Timer({ timeLeft, isMyTurn }: { timeLeft: number; isMyTurn: boolean }) {
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  return (
+    <div className={`timer ${isMyTurn ? 'active' : ''} ${timeLeft <= 10 ? 'warning' : ''}`}>
+      <span className="timer-label">{isMyTurn ? '내 차례' : '상대 차례'}</span>
+      <span className="timer-value">{formatTime(timeLeft)}</span>
+    </div>
+  );
+}
+
+// Result Popup Component
+function ResultPopup({
+  winner,
+  isHost,
+  hostNickname,
+  guestNickname,
+  onPlayAgain
+}: {
+  winner: 'host' | 'guest' | 'draw';
+  isHost: boolean;
+  hostNickname: string;
+  guestNickname: string;
+  onPlayAgain: () => void;
+}) {
+  const getResultMessage = () => {
+    if (winner === 'draw') return '무승부!';
+    const winnerName = winner === 'host' ? hostNickname : guestNickname;
+    const iWon = (winner === 'host' && isHost) || (winner === 'guest' && !isHost);
+    return iWon ? '🎉 승리!' : `${winnerName} 승리`;
+  };
+
+  return (
+    <div className="popup-overlay">
+      <div className="popup">
+        <h2>{getResultMessage()}</h2>
+        <p>패자가 다음 게임에서 선공합니다</p>
+        <button onClick={onPlayAgain} className="btn-primary">
+          다시 하기
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Lobby Component
+function Lobby({
+  onCreateRoom,
+  onJoinRoom
+}: {
+  onCreateRoom: (nickname: string) => void;
+  onJoinRoom: (code: string, nickname: string) => void;
+}) {
+  const [mode, setMode] = useState<'menu' | 'create' | 'join'>('menu');
+  const [nickname, setNickname] = useState('');
+  const [roomCode, setRoomCode] = useState('');
+  const [error, setError] = useState('');
+
+  const handleCreate = () => {
+    if (!nickname.trim()) {
+      setError('닉네임을 입력해주세요');
+      return;
+    }
+    onCreateRoom(nickname.trim());
+  };
+
+  const handleJoin = () => {
+    if (!nickname.trim()) {
+      setError('닉네임을 입력해주세요');
+      return;
+    }
+    if (roomCode.length !== 5) {
+      setError('5자리 코드를 입력해주세요');
+      return;
+    }
+    onJoinRoom(roomCode, nickname.trim());
+  };
+
+  return (
+    <div className="lobby">
+      <h1 className="title">♔ 3D 체스 온라인 ♚</h1>
+
+      {mode === 'menu' && (
+        <div className="menu-buttons">
+          <button onClick={() => setMode('create')} className="btn-primary">
+            방 만들기
+          </button>
+          <button onClick={() => setMode('join')} className="btn-secondary">
+            방 참가하기
+          </button>
+        </div>
+      )}
+
+      {mode === 'create' && (
+        <div className="form">
+          <h2>방 만들기</h2>
+          <input
+            type="text"
+            placeholder="닉네임 입력"
+            value={nickname}
+            onChange={(e) => setNickname(e.target.value)}
+            maxLength={10}
+          />
+          {error && <p className="error">{error}</p>}
+          <div className="form-buttons">
+            <button onClick={handleCreate} className="btn-primary">생성</button>
+            <button onClick={() => { setMode('menu'); setError(''); }} className="btn-secondary">취소</button>
+          </div>
+        </div>
+      )}
+
+      {mode === 'join' && (
+        <div className="form">
+          <h2>방 참가하기</h2>
+          <input
+            type="text"
+            placeholder="닉네임 입력"
+            value={nickname}
+            onChange={(e) => setNickname(e.target.value)}
+            maxLength={10}
+          />
+          <input
+            type="number"
+            placeholder="5자리 코드"
+            value={roomCode}
+            onChange={(e) => {
+              const val = e.target.value.slice(0, 5);
+              setRoomCode(val);
+            }}
+            maxLength={5}
+            style={{ appearance: 'textfield' }}
+          />
+          {error && <p className="error">{error}</p>}
+          <div className="form-buttons">
+            <button onClick={handleJoin} className="btn-primary">참가</button>
+            <button onClick={() => { setMode('menu'); setError(''); }} className="btn-secondary">취소</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Main App Component
+function App() {
+  const [playerId, setPlayerId] = useState<string | null>(null);
+  const [room, setRoom] = useState<Room | null>(null);
+  const [isHost, setIsHost] = useState(false);
+  const [waiting, setWaiting] = useState(false);
+  const [error, setError] = useState('');
+
+  const [chess] = useState(new Chess());
+  const [pieces, setPieces] = useState<ChessPiece[]>([]);
+  const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
+  const [validMoves, setValidMoves] = useState<string[]>([]);
+  const [timeLeft, setTimeLeft] = useState(30);
+  const [showResult, setShowResult] = useState(false);
+
+  const timerRef = useRef<number | null>(null);
+  const roomRef = useRef<ReturnType<typeof ref> | null>(null);
+
+  // Initialize anonymous auth
+  useEffect(() => {
+    signInAnonymously(auth)
+      .then((result) => {
+        setPlayerId(result.user.uid);
+      })
+      .catch((error) => {
+        console.error('Auth error:', error);
+        setError('인증 오류가 발생했습니다');
+      });
+  }, []);
+
+  // Convert chess.js board to pieces array
+  const updatePieces = useCallback(() => {
+    const board = chess.board();
+    const newPieces: ChessPiece[] = [];
+
+    board.forEach((row, ri) => {
+      row.forEach((piece, fi) => {
+        if (piece) {
+          const file = String.fromCharCode(97 + fi);
+          const rank = (8 - ri).toString();
+          newPieces.push({
+            type: piece.type as ChessPiece['type'],
+            color: piece.color as ChessPiece['color'],
+            square: `${file}${rank}`
+          });
+        }
+      });
+    });
+
+    setPieces(newPieces);
+  }, [chess]);
+
+  // Get my color based on host status and game rules
+  const getMyColor = useCallback((): 'white' | 'black' => {
+    if (!room) return 'white';
+
+    // First game: host is white
+    // After game: loser starts as white
+    if (room.previousLoser === 'host') {
+      return isHost ? 'white' : 'black';
+    } else if (room.previousLoser === 'guest') {
+      return isHost ? 'black' : 'white';
+    }
+    return isHost ? 'white' : 'black';
+  }, [room, isHost]);
+
+  // Check if it's my turn
+  const isMyTurn = useCallback((): boolean => {
+    if (!room || room.status !== 'playing') return false;
+    const myColor = getMyColor();
+    return room.currentTurn === myColor;
+  }, [room, getMyColor]);
+
+  // Timer effect with auto-move
+  const autoMovedRef = useRef(false);
+
+  useEffect(() => {
+    if (room?.status === 'playing' && room.turnStartTime) {
+      autoMovedRef.current = false; // Reset when turn changes
+
+      const updateTimer = () => {
+        const elapsed = Math.floor((Date.now() - room.turnStartTime) / 1000);
+        const remaining = Math.max(0, 30 - elapsed);
+        setTimeLeft(remaining);
+
+        // Auto-move if time runs out and it's my turn (only once)
+        if (remaining === 0 && isMyTurn() && !autoMovedRef.current) {
+          autoMovedRef.current = true;
+          // Get random move and execute
+          const moves = chess.moves({ verbose: true });
+          if (moves.length > 0) {
+            const randomMove = moves[Math.floor(Math.random() * moves.length)];
+            // Directly execute move logic
+            const move = chess.move({ from: randomMove.from, to: randomMove.to, promotion: 'q' });
+            if (move) {
+              updatePieces();
+              const newTurn = room.currentTurn === 'white' ? 'black' : 'white';
+              set(ref(db, `rooms/${room.code}`), {
+                ...room,
+                fen: chess.fen(),
+                currentTurn: newTurn,
+                turnStartTime: Date.now(),
+                lastMove: { from: randomMove.from, to: randomMove.to },
+                status: 'playing',
+                winner: null
+              });
+            }
+          }
+        }
+      };
+
+      updateTimer();
+      timerRef.current = setInterval(updateTimer, 1000);
+
+      return () => {
+        if (timerRef.current) clearInterval(timerRef.current);
+      };
+    }
+  }, [room?.turnStartTime, room?.status, room?.currentTurn, isMyTurn, chess, updatePieces, room]);
+
+  // Handle move
+  const handleMove = async (from: string, to: string) => {
+    if (!room || !playerId) return;
+
+    try {
+      // 강제 이동: 체스 규칙을 무시하고 직접 말 이동
+      const piece = chess.get(from as any);
+      if (!piece) return; // 이동할 말이 없으면 중단
+      // 기존 위치 제거
+      chess.remove(from as any);
+      // 새로운 위치에 말 배치 (프로모션은 퀸으로 고정)
+      const newPiece = { ...piece, type: piece.type === 'p' && to[1] === (piece.color === 'w' ? '8' : '1') ? 'q' : piece.type };
+      chess.put(newPiece as any, to as any);
+
+      // UI와 DB 업데이트
+      updatePieces();
+      const newTurn = room.currentTurn === 'white' ? 'black' : 'white';
+      await set(roomRef.current!, {
+        ...room,
+        fen: chess.fen(),
+        currentTurn: newTurn,
+        turnStartTime: Date.now(),
+        lastMove: { from, to },
+        status: 'playing',
+        winner: null,
+      });
+    } catch (e) {
+      console.error('Move error:', e);
+    }
+  };
+
+  // Handle square click
+  const handleSquareClick = (square: string) => {
+    if (!room || room.status !== 'playing' || !isMyTurn()) return;
+
+    if (selectedSquare) {
+      if (validMoves.includes(square)) {
+        handleMove(selectedSquare, square);
+      } else {
+        // Select new piece
+        const piece = chess.get(square as any);
+        if (piece && ((piece.color === 'w' && getMyColor() === 'white') ||
+          (piece.color === 'b' && getMyColor() === 'black'))) {
+          setSelectedSquare(square);
+          const moves = chess.moves({ square: square as any, verbose: true });
+          setValidMoves(moves.map(m => m.to));
+        } else {
+          setSelectedSquare(null);
+          setValidMoves([]);
+        }
+      }
+    } else {
+      const piece = chess.get(square as any);
+      if (piece && ((piece.color === 'w' && getMyColor() === 'white') ||
+        (piece.color === 'b' && getMyColor() === 'black'))) {
+        setSelectedSquare(square);
+        const moves = chess.moves({ square: square as any, verbose: true });
+        setValidMoves(moves.map(m => m.to));
+      }
+    }
+  };
+
+  // Create room
+  const createRoom = async (nickname: string) => {
+    if (!playerId) return;
+
+    const code = generateRoomCode();
+    const newRoom: Room = {
+      code,
+      hostId: playerId,
+      hostNickname: nickname,
+      guestId: null,
+      guestNickname: null,
+      status: 'waiting',
+      currentTurn: 'white',
+      turnStartTime: Date.now(), // start timer immediately
+      fen: chess.fen(),
+      lastMove: null,
+      winner: null,
+      loserStarts: false,
+      previousLoser: null
+    };
+
+    roomRef.current = ref(db, `rooms/${code}`);
+    await set(roomRef.current, newRoom);
+
+    setRoom(newRoom);
+    setIsHost(true);
+    setWaiting(true);
+    updatePieces();
+
+    // Listen for updates
+    onValue(roomRef.current, (snapshot) => {
+      const data = snapshot.val() as Room;
+      if (data) {
+        setRoom(data);
+        chess.load(data.fen);
+        updatePieces();
+
+        if (data.status === 'playing') {
+          setWaiting(false);
+        }
+        if (data.winner) {
+          setShowResult(true);
+        }
+      }
+    });
+  };
+
+  // Join room
+  const joinRoom = async (code: string, nickname: string) => {
+    if (!playerId) return;
+
+    roomRef.current = ref(db, `rooms/${code}`);
+
+    // Check if room exists
+    onValue(roomRef.current, async (snapshot) => {
+      const data = snapshot.val() as Room;
+
+      if (!data) {
+        setError('방을 찾을 수 없습니다');
+        off(roomRef.current!);
+        return;
+      }
+
+      if (data.guestId && data.guestId !== playerId) {
+        setError('방이 가득 찼습니다');
+        off(roomRef.current!);
+        return;
+      }
+
+      // Join room
+      if (!data.guestId) {
+        await set(roomRef.current!, {
+          ...data,
+          guestId: playerId,
+          guestNickname: nickname,
+          status: 'playing',
+          turnStartTime: Date.now()
+        });
+      }
+
+      setRoom(data);
+      setIsHost(false);
+      chess.load(data.fen);
+      updatePieces();
+    });
+  };
+
+  // Play again
+  const handlePlayAgain = async () => {
+    if (!room || !roomRef.current) return;
+
+    chess.reset();
+    updatePieces();
+
+    await set(roomRef.current, {
+      ...room,
+      fen: chess.fen(),
+      currentTurn: 'white',
+      turnStartTime: Date.now(),
+      lastMove: null,
+      status: 'playing',
+      winner: null
+    });
+
+    setShowResult(false);
+    setSelectedSquare(null);
+    setValidMoves([]);
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (roomRef.current && isHost) {
+        remove(roomRef.current);
+      }
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, [isHost]);
+
+  // Render
+  if (!playerId) {
+    return <div className="loading">로딩 중...</div>;
+  }
+
+  if (!room) {
+    return <Lobby onCreateRoom={createRoom} onJoinRoom={joinRoom} />;
+  }
+
+  if (waiting) {
+    return (
+      <div className="waiting">
+        <h2>대기 중</h2>
+        <p>방 코드: <span className="room-code">{room.code}</span></p>
+        <p>상대방이 참가하기를 기다리는 중...</p>
+        <div className="spinner"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="game-container">
+      <div className="game-header">
+        <div className="player-info opponent">
+          <span className="nickname">{isHost ? room.guestNickname : room.hostNickname}</span>
+          <span className="color">({getMyColor() === 'white' ? '흑' : '백'})</span>
+        </div>
+        <Timer timeLeft={timeLeft} isMyTurn={isMyTurn()} />
+        <div className="player-info me">
+          <span className="nickname">{isHost ? room.hostNickname : room.guestNickname}</span>
+          <span className="color">({getMyColor() === 'white' ? '백' : '흑'})</span>
+        </div>
+      </div>
+
+      <div className="game-canvas">
+        <Canvas shadows camera={{ position: [0, 10, 10], fov: 45 }}>
+          {/* Ambient light for base illumination */}
+          <ambientLight intensity={0.4} />
+          {/* Main directional light with shadows */}
+          <directionalLight
+            position={[5, 12, 5]}
+            intensity={1.2}
+            castShadow
+            shadow-mapSize-width={2048}
+            shadow-mapSize-height={2048}
+            shadow-camera-far={30}
+            shadow-camera-left={-10}
+            shadow-camera-right={10}
+            shadow-camera-top={10}
+            shadow-camera-bottom={-10}
+          />
+          {/* Fill light */}
+          <directionalLight position={[-5, 8, -5]} intensity={0.4} />
+          {/* Rim light for dramatic effect */}
+          <pointLight position={[0, 15, 0]} intensity={0.3} />
+          <ChessBoard3D
+            pieces={pieces}
+            selectedSquare={selectedSquare}
+            validMoves={validMoves}
+            onSquareClick={handleSquareClick}
+            myColor={getMyColor()}
+          />
+          <OrbitControls
+            enablePan={false}
+            minDistance={8}
+            maxDistance={15}
+            minPolarAngle={Math.PI / 6}
+            maxPolarAngle={Math.PI / 2.5}
+          />
+        </Canvas>
+      </div>
+
+      <div className="game-footer">
+        <p className="room-code">방 코드: {room.code}</p>
+      </div>
+
+      {showResult && room.winner && (
+        <ResultPopup
+          winner={room.winner}
+          isHost={isHost}
+          hostNickname={room.hostNickname}
+          guestNickname={room.guestNickname || ''}
+          onPlayAgain={handlePlayAgain}
+        />
+      )}
+
+      {error && <div className="error-toast">{error}</div>}
+    </div>
+  );
+}
+
+export default App;
