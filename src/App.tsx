@@ -5,7 +5,7 @@ import { Chess } from 'chess.js';
 import { ref, set, onValue, off, remove } from 'firebase/database';
 import { signInAnonymously } from 'firebase/auth';
 import { db, auth } from './firebase';
-import type { Room, ChessPiece } from './types';
+import type { Room, ChessPiece, ChatMessage } from './types';
 import './App.css';
 
 // Generate 5-digit room code
@@ -29,15 +29,25 @@ function ChessPiece3D({
 }) {
   // Enhanced colors with better contrast
   const isWhite = piece?.color === 'w';
-  const baseColor = isWhite ? '#faf0e6' : '#8b4513';  // Saddle brown - more visible
-  const accentColor = isWhite ? '#d4c4b0' : '#a0522d'; // Sienna accent
-  const highlightColor = isWhite ? '#ffffff' : '#cd853f'; // Peru/tan highlight
+  const baseColor = isWhite ? '#faf0e6' : '#3d3530';      // Dark bronze for black
+  const accentColor = isWhite ? '#d4c4b0' : '#4a4540';    // Slightly lighter bronze
+  const highlightColor = isWhite ? '#ffd700' : '#e8e8e8'; // Gold for white, Silver for black
+  const edgeColor = '#ffffff';  // White edge lines for black pieces
 
   // Material properties - black pieces more metallic/shiny
-  const metalness = isWhite ? 0.1 : 0.7;
-  const roughness = isWhite ? 0.4 : 0.15;
-  const emissive = isSelected ? '#22ff22' : isValidMove ? '#4488ff' : (isWhite ? '#000000' : '#2a1506');
-  const emissiveIntensity = isSelected ? 0.4 : isValidMove ? 0.3 : (isWhite ? 0 : 0.15);
+  const metalness = isWhite ? 0.15 : 0.75;
+  const roughness = isWhite ? 0.3 : 0.15;
+  const emissive = isSelected ? '#22ff22' : isValidMove ? '#4488ff' : (isWhite ? '#000000' : '#3d2817');
+  const emissiveIntensity = isSelected ? 0.4 : isValidMove ? 0.3 : (isWhite ? 0 : 0.2);
+
+  // Edge line material for black pieces - glowing silver/white lines
+  const edgeMaterial = {
+    color: edgeColor,
+    metalness: 1.0,
+    roughness: 0.05,
+    emissive: '#888888',
+    emissiveIntensity: 0.5,
+  };
 
   const getPieceGeometry = (type: string) => {
     switch (type) {
@@ -49,11 +59,25 @@ function ChessPiece3D({
               <cylinderGeometry args={[0.4, 0.44, 0.2, 32]} />
               <meshStandardMaterial color={baseColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
             </mesh>
+            {/* Edge line - base top */}
+            {!isWhite && (
+              <mesh position={[0, 0.2, 0]}>
+                <torusGeometry args={[0.4, 0.012, 8, 32]} />
+                <meshStandardMaterial {...edgeMaterial} />
+              </mesh>
+            )}
             {/* Lower body */}
             <mesh position={[0, 0.3, 0]} castShadow>
               <cylinderGeometry args={[0.32, 0.4, 0.24, 32]} />
               <meshStandardMaterial color={baseColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
             </mesh>
+            {/* Edge line - lower body top */}
+            {!isWhite && (
+              <mesh position={[0, 0.42, 0]}>
+                <torusGeometry args={[0.32, 0.012, 8, 32]} />
+                <meshStandardMaterial {...edgeMaterial} />
+              </mesh>
+            )}
             {/* Middle body */}
             <mesh position={[0, 0.55, 0]} castShadow>
               <cylinderGeometry args={[0.24, 0.32, 0.36, 32]} />
@@ -69,6 +93,13 @@ function ChessPiece3D({
               <cylinderGeometry args={[0.18, 0.24, 0.26, 32]} />
               <meshStandardMaterial color={baseColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
             </mesh>
+            {/* Edge line - upper body top */}
+            {!isWhite && (
+              <mesh position={[0, 1.05, 0]}>
+                <torusGeometry args={[0.18, 0.012, 8, 32]} />
+                <meshStandardMaterial {...edgeMaterial} />
+              </mesh>
+            )}
             {/* Cross vertical */}
             <mesh position={[0, 1.18, 0]} castShadow>
               <boxGeometry args={[0.08, 0.32, 0.08]} />
@@ -89,11 +120,25 @@ function ChessPiece3D({
               <cylinderGeometry args={[0.38, 0.42, 0.2, 32]} />
               <meshStandardMaterial color={baseColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
             </mesh>
+            {/* Edge line - base top */}
+            {!isWhite && (
+              <mesh position={[0, 0.2, 0]}>
+                <torusGeometry args={[0.38, 0.012, 8, 32]} />
+                <meshStandardMaterial {...edgeMaterial} />
+              </mesh>
+            )}
             {/* Lower body */}
             <mesh position={[0, 0.3, 0]} castShadow>
               <cylinderGeometry args={[0.3, 0.38, 0.24, 32]} />
               <meshStandardMaterial color={baseColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
             </mesh>
+            {/* Edge line - lower body top */}
+            {!isWhite && (
+              <mesh position={[0, 0.42, 0]}>
+                <torusGeometry args={[0.3, 0.012, 8, 32]} />
+                <meshStandardMaterial {...edgeMaterial} />
+              </mesh>
+            )}
             {/* Middle body */}
             <mesh position={[0, 0.54, 0]} castShadow>
               <cylinderGeometry args={[0.22, 0.3, 0.34, 32]} />
@@ -109,6 +154,13 @@ function ChessPiece3D({
               <cylinderGeometry args={[0.22, 0.18, 0.24, 32]} />
               <meshStandardMaterial color={baseColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
             </mesh>
+            {/* Edge line - crown base */}
+            {!isWhite && (
+              <mesh position={[0, 1.02, 0]}>
+                <torusGeometry args={[0.22, 0.012, 8, 32]} />
+                <meshStandardMaterial {...edgeMaterial} />
+              </mesh>
+            )}
             {/* Crown spikes */}
             {[0, 1, 2, 3, 4, 5].map((i) => (
               <mesh key={i} position={[Math.cos(i * Math.PI / 3) * 0.14, 1.08, Math.sin(i * Math.PI / 3) * 0.14]} castShadow>
@@ -131,16 +183,37 @@ function ChessPiece3D({
               <cylinderGeometry args={[0.32, 0.35, 0.16, 32]} />
               <meshStandardMaterial color={baseColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
             </mesh>
+            {/* Edge line - base top */}
+            {!isWhite && (
+              <mesh position={[0, 0.16, 0]}>
+                <torusGeometry args={[0.32, 0.012, 8, 32]} />
+                <meshStandardMaterial {...edgeMaterial} />
+              </mesh>
+            )}
             {/* Lower body */}
             <mesh position={[0, 0.25, 0]} castShadow>
               <cylinderGeometry args={[0.26, 0.32, 0.2, 32]} />
               <meshStandardMaterial color={baseColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
             </mesh>
+            {/* Edge line - lower body top */}
+            {!isWhite && (
+              <mesh position={[0, 0.35, 0]}>
+                <torusGeometry args={[0.26, 0.012, 8, 32]} />
+                <meshStandardMaterial {...edgeMaterial} />
+              </mesh>
+            )}
             {/* Tower body */}
             <mesh position={[0, 0.48, 0]} castShadow>
               <cylinderGeometry args={[0.22, 0.26, 0.36, 32]} />
               <meshStandardMaterial color={accentColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
             </mesh>
+            {/* Edge line - tower top */}
+            {!isWhite && (
+              <mesh position={[0, 0.66, 0]}>
+                <torusGeometry args={[0.22, 0.012, 8, 32]} />
+                <meshStandardMaterial {...edgeMaterial} />
+              </mesh>
+            )}
             {/* Top platform */}
             <mesh position={[0, 0.7, 0]} castShadow>
               <cylinderGeometry args={[0.28, 0.22, 0.1, 32]} />
@@ -163,11 +236,25 @@ function ChessPiece3D({
               <cylinderGeometry args={[0.34, 0.38, 0.2, 32]} />
               <meshStandardMaterial color={baseColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
             </mesh>
+            {/* Edge line - base top */}
+            {!isWhite && (
+              <mesh position={[0, 0.2, 0]}>
+                <torusGeometry args={[0.34, 0.012, 8, 32]} />
+                <meshStandardMaterial {...edgeMaterial} />
+              </mesh>
+            )}
             {/* Lower body */}
             <mesh position={[0, 0.28, 0]} castShadow>
               <cylinderGeometry args={[0.26, 0.34, 0.2, 32]} />
               <meshStandardMaterial color={baseColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
             </mesh>
+            {/* Edge line - lower body top */}
+            {!isWhite && (
+              <mesh position={[0, 0.38, 0]}>
+                <torusGeometry args={[0.26, 0.012, 8, 32]} />
+                <meshStandardMaterial {...edgeMaterial} />
+              </mesh>
+            )}
             {/* Middle body - taller */}
             <mesh position={[0, 0.52, 0]} castShadow>
               <cylinderGeometry args={[0.16, 0.26, 0.32, 32]} />
@@ -186,7 +273,7 @@ function ChessPiece3D({
             {/* Mitre slit - distinctive marking */}
             <mesh position={[0, 0.88, 0.08]} rotation={[0.3, 0, 0]} castShadow>
               <boxGeometry args={[0.04, 0.25, 0.12]} />
-              <meshStandardMaterial color={isWhite ? '#1a1a1a' : '#000000'} metalness={0.1} roughness={0.8} />
+              <meshStandardMaterial color={isWhite ? '#1a1a1a' : '#ffffff'} metalness={0.1} roughness={0.8} emissive={!isWhite ? '#888888' : '#000000'} emissiveIntensity={!isWhite ? 0.5 : 0} />
             </mesh>
             {/* Top ball */}
             <mesh position={[0, 1.05, 0]} castShadow>
@@ -203,11 +290,25 @@ function ChessPiece3D({
               <cylinderGeometry args={[0.3, 0.33, 0.16, 32]} />
               <meshStandardMaterial color={baseColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
             </mesh>
+            {/* Edge line - base top */}
+            {!isWhite && (
+              <mesh position={[0, 0.16, 0]}>
+                <torusGeometry args={[0.3, 0.012, 8, 32]} />
+                <meshStandardMaterial {...edgeMaterial} />
+              </mesh>
+            )}
             {/* Lower body */}
             <mesh position={[0, 0.22, 0]} castShadow>
               <cylinderGeometry args={[0.22, 0.3, 0.16, 32]} />
               <meshStandardMaterial color={baseColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
             </mesh>
+            {/* Edge line - lower body top */}
+            {!isWhite && (
+              <mesh position={[0, 0.3, 0]}>
+                <torusGeometry args={[0.22, 0.012, 8, 32]} />
+                <meshStandardMaterial {...edgeMaterial} />
+              </mesh>
+            )}
             {/* Neck */}
             <mesh position={[0, 0.42, 0.05]} rotation={[-0.3, 0, 0]} castShadow>
               <cylinderGeometry args={[0.12, 0.18, 0.28, 32]} />
@@ -223,6 +324,13 @@ function ChessPiece3D({
               <boxGeometry args={[0.12, 0.14, 0.2]} />
               <meshStandardMaterial color={accentColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
             </mesh>
+            {/* Mane edge line for black pieces */}
+            {!isWhite && (
+              <mesh position={[0, 0.68, -0.02]} rotation={[-0.4, 0, 0]}>
+                <boxGeometry args={[0.02, 0.25, 0.08]} />
+                <meshStandardMaterial {...edgeMaterial} />
+              </mesh>
+            )}
             {/* Ears */}
             <mesh position={[-0.06, 0.75, 0.05]} rotation={[-0.3, -0.2, 0]} castShadow>
               <coneGeometry args={[0.04, 0.1, 8]} />
@@ -251,11 +359,25 @@ function ChessPiece3D({
               <cylinderGeometry args={[0.25, 0.28, 0.12, 32]} />
               <meshStandardMaterial color={baseColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
             </mesh>
+            {/* Edge line - base top */}
+            {!isWhite && (
+              <mesh position={[0, 0.12, 0]}>
+                <torusGeometry args={[0.25, 0.01, 8, 32]} />
+                <meshStandardMaterial {...edgeMaterial} />
+              </mesh>
+            )}
             {/* Lower body */}
             <mesh position={[0, 0.18, 0]} castShadow>
               <cylinderGeometry args={[0.18, 0.25, 0.14, 32]} />
               <meshStandardMaterial color={baseColor} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />
             </mesh>
+            {/* Edge line - lower body top */}
+            {!isWhite && (
+              <mesh position={[0, 0.25, 0]}>
+                <torusGeometry args={[0.18, 0.01, 8, 32]} />
+                <meshStandardMaterial {...edgeMaterial} />
+              </mesh>
+            )}
             {/* Middle body */}
             <mesh position={[0, 0.32, 0]} castShadow>
               <cylinderGeometry args={[0.1, 0.18, 0.16, 32]} />
@@ -380,6 +502,87 @@ function Timer({ timeLeft, isMyTurn }: { timeLeft: number; isMyTurn: boolean }) 
     <div className={`timer ${isMyTurn ? 'active' : ''} ${timeLeft <= 10 ? 'warning' : ''}`}>
       <span className="timer-label">{isMyTurn ? '내 차례' : '상대 차례'}</span>
       <span className="timer-value">{formatTime(timeLeft)}</span>
+    </div>
+  );
+}
+
+// Chat Component
+function Chat({
+  messages,
+  onSendMessage,
+  myName
+}: {
+  messages: ChatMessage[];
+  onSendMessage: (text: string) => void;
+  myName: string;
+}) {
+  const [inputText, setInputText] = useState('');
+  const [isOpen, setIsOpen] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages]);
+
+  const handleSend = () => {
+    if (inputText.trim()) {
+      onSendMessage(inputText.trim());
+      setInputText('');
+    }
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  return (
+    <div className={`chat-container ${isOpen ? 'open' : 'closed'}`}>
+      <button className="chat-toggle" onClick={() => setIsOpen(!isOpen)}>
+        💬 {isOpen ? '채팅 닫기' : '채팅 열기'}
+        {!isOpen && messages.length > 0 && (
+          <span className="chat-badge">{messages.length}</span>
+        )}
+      </button>
+
+      {isOpen && (
+        <div className="chat-panel">
+          <div className="chat-messages">
+            {messages.length === 0 ? (
+              <p className="chat-empty">메시지가 없습니다</p>
+            ) : (
+              messages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`chat-message ${msg.senderName === myName ? 'mine' : 'theirs'}`}
+                >
+                  <span className="chat-sender">{msg.senderName}</span>
+                  <span className="chat-text">{msg.text}</span>
+                </div>
+              ))
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+          <div className="chat-input-area">
+            <input
+              type="text"
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyPress={handleKeyPress}
+              placeholder="메시지 입력..."
+              maxLength={100}
+            />
+            <button onClick={handleSend} className="chat-send">
+              전송
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -735,6 +938,10 @@ function App() {
         chess.load(data.fen);
         updatePieces();
 
+        // Guest joined - ready to start
+        if (data.status === 'ready') {
+          setWaiting(false);
+        }
         if (data.status === 'playing') {
           setWaiting(false);
         }
@@ -767,14 +974,13 @@ function App() {
         return;
       }
 
-      // Join room
+      // Join room - set to 'ready' (game starts when host clicks start)
       if (!data.guestId) {
         await set(roomRef.current!, {
           ...data,
           guestId: playerId,
           guestNickname: nickname,
-          status: 'playing',
-          turnStartTime: Date.now()
+          status: 'ready'  // Changed from 'playing' - wait for host to start
         });
       }
 
@@ -805,6 +1011,38 @@ function App() {
     setShowResult(false);
     setSelectedSquare(null);
     setValidMoves([]);
+  };
+
+  // Start game (host only)
+  const handleStartGame = async () => {
+    if (!room || !roomRef.current || !isHost) return;
+
+    await set(roomRef.current, {
+      ...room,
+      status: 'playing',
+      turnStartTime: Date.now()
+    });
+  };
+
+  // Send chat message
+  const handleSendMessage = async (text: string) => {
+    if (!room || !roomRef.current || !playerId) return;
+
+    const myNickname = isHost ? room.hostNickname : room.guestNickname;
+    const newMessage: ChatMessage = {
+      id: `${Date.now()}-${playerId}`,
+      senderId: playerId,
+      senderName: myNickname || 'Unknown',
+      text,
+      timestamp: Date.now()
+    };
+
+    const updatedMessages = [...(room.messages || []), newMessage];
+
+    await set(roomRef.current, {
+      ...room,
+      messages: updatedMessages
+    });
   };
 
   // Cleanup on unmount
@@ -846,7 +1084,14 @@ function App() {
           <span className="nickname">{isHost ? room.guestNickname : room.hostNickname}</span>
           <span className="color">({getMyColor() === 'white' ? '흑' : '백'})</span>
         </div>
-        <Timer timeLeft={timeLeft} isMyTurn={isMyTurn()} />
+        {/* Timer only shows during playing state */}
+        {room.status === 'playing' ? (
+          <Timer timeLeft={timeLeft} isMyTurn={isMyTurn()} />
+        ) : (
+          <div className="ready-status">
+            <span>🎮 게임 준비 완료</span>
+          </div>
+        )}
         <div className="player-info me">
           <span className="nickname">{isHost ? room.hostNickname : room.guestNickname}</span>
           <span className="color">({getMyColor() === 'white' ? '백' : '흑'})</span>
@@ -882,9 +1127,9 @@ function App() {
             myColor={getMyColor()}
           />
           <OrbitControls
-            enablePan={false}
+            enablePan={true}
             minDistance={8}
-            maxDistance={15}
+            maxDistance={30}
             minPolarAngle={Math.PI / 6}
             maxPolarAngle={Math.PI / 2.5}
           />
@@ -893,6 +1138,16 @@ function App() {
 
       <div className="game-footer">
         <p className="room-code">방 코드: {room.code}</p>
+        {/* Start Game Button - Only for host in ready state */}
+        {room.status === 'ready' && isHost && (
+          <button onClick={handleStartGame} className="btn-start">
+            🚀 게임 시작
+          </button>
+        )}
+        {room.status === 'ready' && !isHost && (
+          <p className="waiting-host">호스트가 게임을 시작하기를 기다리는 중...</p>
+        )}
+        <p className="pan-hint">💡 마우스 오른쪽 버튼 드래그로 보드 이동</p>
       </div>
 
       {showResult && room.winner && (
@@ -904,6 +1159,13 @@ function App() {
           onPlayAgain={handlePlayAgain}
         />
       )}
+
+      {/* Chat Component */}
+      <Chat
+        messages={room.messages || []}
+        onSendMessage={handleSendMessage}
+        myName={isHost ? room.hostNickname : (room.guestNickname || '')}
+      />
 
       {error && <div className="error-toast">{error}</div>}
     </div>

@@ -10,7 +10,7 @@ export interface Room {
     hostNickname: string;
     guestId: string | null;
     guestNickname: string | null;
-    status: 'waiting' | 'playing' | 'finished';
+    status: 'waiting' | 'ready' | 'playing' | 'finished';
     currentTurn: 'white' | 'black';
     turnStartTime: number;
     fen: string; // FEN notation for chess position
@@ -18,6 +18,15 @@ export interface Room {
     winner: 'host' | 'guest' | 'draw' | null;
     loserStarts: boolean; // If true, loser of previous game starts
     previousLoser: 'host' | 'guest' | null;
+    messages?: ChatMessage[];
+}
+
+export interface ChatMessage {
+    id: string;
+    senderId: string;
+    senderName: string;
+    text: string;
+    timestamp: number;
 }
 
 export interface GameState {
