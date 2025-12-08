@@ -5,6 +5,16 @@
                 ".read": true,
                 ".write": true
             }
+        },
+        "users": {
+            "$userId": {
+                ".read": true,
+                ".write": true
+            }
+        },
+        "config": {
+            ".read": true,
+            ".write": true
         }
     }
 }

@@ -2,10 +2,10 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import { Chess } from 'chess.js';
-import { ref, set, onValue, off, remove } from 'firebase/database';
+import { ref, set, onValue, off, remove, get } from 'firebase/database';
 import { signInAnonymously } from 'firebase/auth';
 import { db, auth } from './firebase';
-import type { Room, ChessPiece, ChatMessage } from './types';
+import type { Room, ChessPiece, ChatMessage, User } from './types';
 import './App.css';
 
 // Generate 5-digit room code
@@ -621,6 +621,17 @@ function ResultPopup({
   );
 }
 
+// Simple hash function for password (for demo purposes - use proper hashing in production!)
+const simpleHash = (str: string): string => {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return Math.abs(hash).toString(16);
+};
+
 // Lobby Component
 function Lobby({
   onCreateRoom,
@@ -629,10 +640,31 @@ function Lobby({
   onCreateRoom: (nickname: string) => void;
   onJoinRoom: (code: string, nickname: string) => void;
 }) {
-  const [mode, setMode] = useState<'menu' | 'create' | 'join'>('menu');
+  const [mode, setMode] = useState<'menu' | 'create' | 'join' | 'register' | 'login'>('menu');
   const [nickname, setNickname] = useState('');
   const [roomCode, setRoomCode] = useState('');
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  // Auth states
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [adminCode, setAdminCode] = useState('');
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Check if user is already logged in (from localStorage)
+  useEffect(() => {
+    const savedUser = localStorage.getItem('chessUser');
+    if (savedUser) {
+      const user = JSON.parse(savedUser) as User;
+      setCurrentUser(user);
+      setNickname(user.nickname);
+      setIsLoggedIn(true);
+    }
+  }, []);
 
   const handleCreate = () => {
     if (!nickname.trim()) {
@@ -654,9 +686,173 @@ function Lobby({
     onJoinRoom(roomCode, nickname.trim());
   };
 
+  // Handle Registration
+  const handleRegister = async () => {
+    setError('');
+    setSuccess('');
+
+    if (!username.trim()) {
+      setError('아이디를 입력해주세요');
+      return;
+    }
+    if (username.length < 4) {
+      setError('아이디는 4자 이상이어야 합니다');
+      return;
+    }
+    if (!password) {
+      setError('비밀번호를 입력해주세요');
+      return;
+    }
+    if (password.length < 4) {
+      setError('비밀번호는 4자 이상이어야 합니다');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError('비밀번호가 일치하지 않습니다');
+      return;
+    }
+    if (adminCode.length !== 4) {
+      setError('4자리 관리자 코드를 입력해주세요');
+      return;
+    }
+    if (!nickname.trim()) {
+      setError('닉네임을 입력해주세요');
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      // Check admin code
+      const configRef = ref(db, 'config/registrationCode');
+      const configSnapshot = await get(configRef);
+      const validCode = configSnapshot.val() || '1234'; // Default to "1234" if not set
+
+      if (validCode !== adminCode) {
+        setError('관리자 코드가 올바르지 않습니다');
+        setIsLoading(false);
+        return;
+      }
+
+      // Check if username already exists
+      const usersRef = ref(db, 'users');
+      const usersSnapshot = await get(usersRef);
+      const users = usersSnapshot.val() || {};
+
+      const usernameExists = Object.values(users).some(
+        (user: unknown) => (user as User).username === username.toLowerCase()
+      );
+
+      if (usernameExists) {
+        setError('이미 존재하는 아이디입니다');
+        setIsLoading(false);
+        return;
+      }
+
+      // Create new user
+      const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const newUser: User = {
+        id: userId,
+        username: username.toLowerCase(),
+        passwordHash: simpleHash(password),
+        nickname: nickname.trim(),
+        createdAt: Date.now()
+      };
+
+      await set(ref(db, `users/${userId}`), newUser);
+
+      setSuccess('회원가입이 완료되었습니다! 로그인해주세요.');
+      setUsername('');
+      setPassword('');
+      setConfirmPassword('');
+      setAdminCode('');
+
+      // Switch to login mode after 2 seconds
+      setTimeout(() => {
+        setMode('login');
+        setSuccess('');
+      }, 2000);
+
+    } catch (err) {
+      console.error('Registration error:', err);
+      setError('회원가입 중 오류가 발생했습니다');
+    }
+
+    setIsLoading(false);
+  };
+
+  // Handle Login
+  const handleLogin = async () => {
+    setError('');
+
+    if (!username.trim()) {
+      setError('아이디를 입력해주세요');
+      return;
+    }
+    if (!password) {
+      setError('비밀번호를 입력해주세요');
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const usersRef = ref(db, 'users');
+      const usersSnapshot = await get(usersRef);
+      const users = usersSnapshot.val() || {};
+
+      const foundUser = Object.values(users).find(
+        (user: unknown) => (user as User).username === username.toLowerCase()
+      ) as User | undefined;
+
+      if (!foundUser) {
+        setError('존재하지 않는 아이디입니다');
+        setIsLoading(false);
+        return;
+      }
+
+      if (foundUser.passwordHash !== simpleHash(password)) {
+        setError('비밀번호가 올바르지 않습니다');
+        setIsLoading(false);
+        return;
+      }
+
+      // Login successful
+      setCurrentUser(foundUser);
+      setNickname(foundUser.nickname);
+      setIsLoggedIn(true);
+      localStorage.setItem('chessUser', JSON.stringify(foundUser));
+      setMode('menu');
+      setUsername('');
+      setPassword('');
+
+    } catch (err) {
+      console.error('Login error:', err);
+      setError('로그인 중 오류가 발생했습니다');
+    }
+
+    setIsLoading(false);
+  };
+
+  // Handle Logout
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setIsLoggedIn(false);
+    setNickname('');
+    localStorage.removeItem('chessUser');
+  };
+
   return (
     <div className="lobby">
       <h1 className="title">♔ 3D 체스 온라인 ♚</h1>
+
+      {/* User Status */}
+      {isLoggedIn && currentUser && (
+        <div className="user-status">
+          <span className="user-welcome">👋 {currentUser.nickname}님 환영합니다!</span>
+          <button onClick={handleLogout} className="btn-logout">로그아웃</button>
+        </div>
+      )}
 
       {mode === 'menu' && (
         <div className="menu-buttons">
@@ -666,6 +862,19 @@ function Lobby({
           <button onClick={() => setMode('join')} className="btn-secondary">
             방 참가하기
           </button>
+          {!isLoggedIn && (
+            <>
+              <div className="menu-divider">
+                <span>계정</span>
+              </div>
+              <button onClick={() => setMode('login')} className="btn-auth">
+                🔑 로그인
+              </button>
+              <button onClick={() => setMode('register')} className="btn-auth-secondary">
+                📝 회원가입
+              </button>
+            </>
+          )}
         </div>
       )}
 
@@ -713,6 +922,101 @@ function Lobby({
             <button onClick={handleJoin} className="btn-primary">참가</button>
             <button onClick={() => { setMode('menu'); setError(''); }} className="btn-secondary">취소</button>
           </div>
+        </div>
+      )}
+
+      {mode === 'register' && (
+        <div className="form auth-form">
+          <h2>📝 회원가입</h2>
+          <input
+            type="text"
+            placeholder="아이디 (4자 이상)"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            maxLength={20}
+            autoComplete="username"
+          />
+          <input
+            type="password"
+            placeholder="비밀번호 (4자 이상)"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            maxLength={30}
+            autoComplete="new-password"
+          />
+          <input
+            type="password"
+            placeholder="비밀번호 확인"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            maxLength={30}
+            autoComplete="new-password"
+          />
+          <input
+            type="text"
+            placeholder="닉네임"
+            value={nickname}
+            onChange={(e) => setNickname(e.target.value)}
+            maxLength={10}
+          />
+          <input
+            type="text"
+            placeholder="관리자 코드 (4자리)"
+            value={adminCode}
+            onChange={(e) => {
+              const val = e.target.value.replace(/\D/g, '').slice(0, 4);
+              setAdminCode(val);
+            }}
+            maxLength={4}
+            className="code-input"
+          />
+          {error && <p className="error">{error}</p>}
+          {success && <p className="success">{success}</p>}
+          <div className="form-buttons">
+            <button onClick={handleRegister} className="btn-primary" disabled={isLoading}>
+              {isLoading ? '처리 중...' : '가입하기'}
+            </button>
+            <button onClick={() => { setMode('menu'); setError(''); setSuccess(''); }} className="btn-secondary">
+              취소
+            </button>
+          </div>
+          <p className="auth-switch">
+            이미 계정이 있으신가요? <span onClick={() => { setMode('login'); setError(''); }}>로그인</span>
+          </p>
+        </div>
+      )}
+
+      {mode === 'login' && (
+        <div className="form auth-form">
+          <h2>🔑 로그인</h2>
+          <input
+            type="text"
+            placeholder="아이디"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            maxLength={20}
+            autoComplete="username"
+          />
+          <input
+            type="password"
+            placeholder="비밀번호"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            maxLength={30}
+            autoComplete="current-password"
+          />
+          {error && <p className="error">{error}</p>}
+          <div className="form-buttons">
+            <button onClick={handleLogin} className="btn-primary" disabled={isLoading}>
+              {isLoading ? '처리 중...' : '로그인'}
+            </button>
+            <button onClick={() => { setMode('menu'); setError(''); }} className="btn-secondary">
+              취소
+            </button>
+          </div>
+          <p className="auth-switch">
+            계정이 없으신가요? <span onClick={() => { setMode('register'); setError(''); }}>회원가입</span>
+          </p>
         </div>
       )}
     </div>
@@ -807,18 +1111,53 @@ function App() {
         // Auto-move if time runs out and it's my turn (only once)
         if (remaining === 0 && isMyTurn() && !autoMovedRef.current) {
           autoMovedRef.current = true;
+
+          // 현재 FEN에서 턴을 올바르게 설정
+          const currentFen = chess.fen();
+          const fenParts = currentFen.split(' ');
+          const myColor = getMyColor();
+          fenParts[1] = myColor === 'white' ? 'w' : 'b';
+          chess.load(fenParts.join(' '));
+
           // Get random move and execute
           const moves = chess.moves({ verbose: true });
           if (moves.length > 0) {
             const randomMove = moves[Math.floor(Math.random() * moves.length)];
-            // Directly execute move logic
-            const move = chess.move({ from: randomMove.from, to: randomMove.to, promotion: 'q' });
-            if (move) {
-              updatePieces();
+
+            // 직접 기물 이동 (handleMove와 동일한 방식)
+            const piece = chess.get(randomMove.from as any);
+            if (piece) {
+              // 목표 위치 기물 제거 (캡처)
+              const targetPiece = chess.get(randomMove.to as any);
+              if (targetPiece) {
+                chess.remove(randomMove.to as any);
+              }
+
+              // 기존 위치 제거
+              chess.remove(randomMove.from as any);
+
+              // 새 위치에 배치 (프로모션 처리)
+              const newPiece = {
+                ...piece,
+                type: piece.type === 'p' && randomMove.to[1] === (piece.color === 'w' ? '8' : '1') ? 'q' : piece.type
+              };
+              chess.put(newPiece as any, randomMove.to as any);
+
+              // FEN 턴 변경
               const newTurn = room.currentTurn === 'white' ? 'black' : 'white';
+              const updatedFen = chess.fen();
+              const updatedFenParts = updatedFen.split(' ');
+              updatedFenParts[1] = newTurn === 'white' ? 'w' : 'b';
+              const finalFen = updatedFenParts.join(' ');
+              chess.load(finalFen);
+
+              updatePieces();
+              setSelectedSquare(null);
+              setValidMoves([]);
+
               set(ref(db, `rooms/${room.code}`), {
                 ...room,
-                fen: chess.fen(),
+                fen: finalFen,
                 currentTurn: newTurn,
                 turnStartTime: Date.now(),
                 lastMove: { from: randomMove.from, to: randomMove.to },
@@ -837,7 +1176,7 @@ function App() {
         if (timerRef.current) clearInterval(timerRef.current);
       };
     }
-  }, [room?.turnStartTime, room?.status, room?.currentTurn, isMyTurn, chess, updatePieces, room]);
+  }, [room?.turnStartTime, room?.status, room?.currentTurn, isMyTurn, chess, updatePieces, room, getMyColor]);
 
   // Handle move
   const handleMove = async (from: string, to: string) => {
@@ -847,18 +1186,35 @@ function App() {
       // 강제 이동: 체스 규칙을 무시하고 직접 말 이동
       const piece = chess.get(from as any);
       if (!piece) return; // 이동할 말이 없으면 중단
+
+      // 목표 위치에 있는 기물 제거 (캡처)
+      const targetPiece = chess.get(to as any);
+      if (targetPiece) {
+        chess.remove(to as any);
+      }
+
       // 기존 위치 제거
       chess.remove(from as any);
       // 새로운 위치에 말 배치 (프로모션은 퀸으로 고정)
       const newPiece = { ...piece, type: piece.type === 'p' && to[1] === (piece.color === 'w' ? '8' : '1') ? 'q' : piece.type };
       chess.put(newPiece as any, to as any);
 
+      // FEN 문자열의 턴 부분을 수정하여 chess.js 내부 상태 동기화
+      const newTurn = room.currentTurn === 'white' ? 'black' : 'white';
+      const currentFen = chess.fen();
+      const fenParts = currentFen.split(' ');
+      fenParts[1] = newTurn === 'white' ? 'w' : 'b'; // 턴 변경
+      const newFen = fenParts.join(' ');
+      chess.load(newFen);
+
       // UI와 DB 업데이트
       updatePieces();
-      const newTurn = room.currentTurn === 'white' ? 'black' : 'white';
+      setSelectedSquare(null);
+      setValidMoves([]);
+
       await set(roomRef.current!, {
         ...room,
-        fen: chess.fen(),
+        fen: newFen,
         currentTurn: newTurn,
         turnStartTime: Date.now(),
         lastMove: { from, to },
@@ -912,6 +1268,7 @@ function App() {
       hostNickname: nickname,
       guestId: null,
       guestNickname: null,
+      guestReady: false,
       status: 'waiting',
       currentTurn: 'white',
       turnStartTime: Date.now(), // start timer immediately
@@ -938,8 +1295,8 @@ function App() {
         chess.load(data.fen);
         updatePieces();
 
-        // Guest joined - ready to start
-        if (data.status === 'ready') {
+        // Guest joined - exit waiting screen
+        if (data.guestId) {
           setWaiting(false);
         }
         if (data.status === 'playing') {
@@ -974,16 +1331,21 @@ function App() {
         return;
       }
 
-      // Join room - set to 'ready' (game starts when host clicks start)
+      // Join room - keep as 'waiting', guest needs to click ready
       if (!data.guestId) {
-        await set(roomRef.current!, {
+        const updatedRoom = {
           ...data,
           guestId: playerId,
           guestNickname: nickname,
-          status: 'ready'  // Changed from 'playing' - wait for host to start
-        });
+          guestReady: false,
+          status: 'waiting' as const  // Stays waiting until guest clicks ready
+        };
+        await set(roomRef.current!, updatedRoom);
+        // Don't setRoom here, will be updated by onValue listener on next trigger
+        return;
       }
 
+      // Update room state with latest data (including guestId)
       setRoom(data);
       setIsHost(false);
       chess.load(data.fen);
@@ -1013,9 +1375,21 @@ function App() {
     setValidMoves([]);
   };
 
+  // Guest ready button
+  const handleGuestReady = async () => {
+    if (!room || !roomRef.current || isHost) return;
+
+    await set(roomRef.current, {
+      ...room,
+      guestReady: true,
+      status: 'ready'  // Now host can start the game
+    });
+  };
+
   // Start game (host only)
   const handleStartGame = async () => {
     if (!room || !roomRef.current || !isHost) return;
+    if (!room.guestReady) return; // Can only start if guest is ready
 
     await set(roomRef.current, {
       ...room,
@@ -1066,7 +1440,8 @@ function App() {
     return <Lobby onCreateRoom={createRoom} onJoinRoom={joinRoom} />;
   }
 
-  if (waiting) {
+  // 호스트이고 게스트가 아직 들어오지 않았을 때만 대기 화면 표시
+  if (isHost && !room.guestId) {
     return (
       <div className="waiting">
         <h2>대기 중</h2>
@@ -1088,8 +1463,31 @@ function App() {
         {room.status === 'playing' ? (
           <Timer timeLeft={timeLeft} isMyTurn={isMyTurn()} />
         ) : (
-          <div className="ready-status">
-            <span>🎮 게임 준비 완료</span>
+          <div className="ready-buttons">
+            {/* Guest: Ready Button */}
+            {!isHost && room.guestReady !== true && (
+              <button onClick={handleGuestReady} className="btn-ready-header">
+                ✋ 게임 준비
+              </button>
+            )}
+            {/* Guest: Waiting for host */}
+            {!isHost && room.guestReady === true && (
+              <div className="ready-status">
+                <span>✅ 준비 완료! 호스트 대기중...</span>
+              </div>
+            )}
+            {/* Host: Waiting for guest -> disabled button, Ready -> Start button */}
+            {isHost && (
+              room.guestReady === true ? (
+                <button onClick={handleStartGame} className="btn-start-header">
+                  🚀 게임 시작
+                </button>
+              ) : (
+                <button className="btn-waiting-header" disabled>
+                  ⏳ 게스트 준비 대기중...
+                </button>
+              )
+            )}
           </div>
         )}
         <div className="player-info me">
@@ -1138,15 +1536,6 @@ function App() {
 
       <div className="game-footer">
         <p className="room-code">방 코드: {room.code}</p>
-        {/* Start Game Button - Only for host in ready state */}
-        {room.status === 'ready' && isHost && (
-          <button onClick={handleStartGame} className="btn-start">
-            🚀 게임 시작
-          </button>
-        )}
-        {room.status === 'ready' && !isHost && (
-          <p className="waiting-host">호스트가 게임을 시작하기를 기다리는 중...</p>
-        )}
         <p className="pan-hint">💡 마우스 오른쪽 버튼 드래그로 보드 이동</p>
       </div>
 

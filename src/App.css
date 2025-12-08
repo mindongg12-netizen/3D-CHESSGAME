@@ -166,6 +166,145 @@ body {
   font-size: 0.9rem;
 }
 
+.success {
+  color: var(--success);
+  text-align: center;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}
+
+/* User Status */
+.user-status {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1.5rem;
+  background: rgba(74, 222, 128, 0.15);
+  border: 1px solid var(--success);
+  border-radius: 12px;
+  margin-bottom: 1rem;
+}
+
+.user-welcome {
+  font-size: 1rem;
+  color: var(--success);
+  font-weight: 600;
+}
+
+.btn-logout {
+  padding: 0.4rem 0.8rem;
+  font-size: 0.85rem;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  background: rgba(233, 69, 96, 0.2);
+  color: var(--primary);
+  transition: all 0.3s ease;
+}
+
+.btn-logout:hover {
+  background: var(--primary);
+  color: white;
+}
+
+/* Menu Divider */
+.menu-divider {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 0.5rem 0;
+  width: 100%;
+}
+
+.menu-divider::before,
+.menu-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--text-dim), transparent);
+}
+
+.menu-divider span {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+
+/* Auth Buttons */
+.btn-auth {
+  padding: 1rem 2rem;
+  font-size: 1.1rem;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-weight: 600;
+  background: linear-gradient(135deg, var(--accent), #6b44a8);
+  color: white;
+  box-shadow: 0 4px 20px rgba(83, 52, 131, 0.4);
+}
+
+.btn-auth:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 30px rgba(83, 52, 131, 0.6);
+}
+
+.btn-auth-secondary {
+  padding: 1rem 2rem;
+  font-size: 1.1rem;
+  border: 2px solid var(--accent);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-weight: 600;
+  background: transparent;
+  color: var(--text);
+}
+
+.btn-auth-secondary:hover {
+  background: rgba(83, 52, 131, 0.3);
+  transform: translateY(-2px);
+}
+
+/* Auth Form */
+.auth-form {
+  max-width: 380px;
+}
+
+.auth-form input {
+  margin-bottom: 0.75rem;
+}
+
+.auth-form .code-input {
+  text-align: center;
+  font-size: 1.2rem;
+  letter-spacing: 0.5em;
+  font-family: 'Courier New', monospace;
+}
+
+.auth-switch {
+  text-align: center;
+  margin-top: 1rem;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+
+.auth-switch span {
+  color: var(--accent);
+  cursor: pointer;
+  font-weight: 600;
+  transition: color 0.3s ease;
+}
+
+.auth-switch span:hover {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+.form button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 /* Waiting */
 .waiting {
   display: flex;
@@ -442,20 +581,103 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0.75rem 1.5rem;
+  padding: 0 2rem;
   background: linear-gradient(135deg, var(--success), #22c55e);
   border-radius: 12px;
   min-width: 150px;
+  height: 46px;
   animation: pulse 2s ease-in-out infinite;
 }
 
+.ready-status.waiting {
+  background: linear-gradient(135deg, var(--accent), var(--secondary));
+}
+
 .ready-status span {
-  font-size: 1.1rem;
+  font-size: 1rem;
   font-weight: 600;
   color: white;
 }
 
-/* Start Game Button */
+/* Ready Buttons Container */
+.ready-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Header Ready Button (Guest) */
+.btn-ready-header {
+  height: 46px;
+  padding: 0 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  font-weight: bold;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  background: linear-gradient(135deg, var(--warning), #f59e0b);
+  color: #1a1a2e;
+  box-shadow: 0 4px 20px rgba(251, 191, 36, 0.5);
+  transition: all 0.3s ease;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.btn-ready-header:hover {
+  transform: scale(1.02);
+  box-shadow: 0 6px 30px rgba(251, 191, 36, 0.7);
+}
+
+/* Header Start Button (Host) */
+.btn-start-header {
+  height: 46px;
+  padding: 0 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  font-weight: bold;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  background: linear-gradient(135deg, var(--success), #22c55e);
+  color: white;
+  box-shadow: 0 4px 20px rgba(74, 222, 128, 0.5);
+  transition: all 0.3s ease;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.btn-start-header:hover {
+  transform: scale(1.02);
+  box-shadow: 0 6px 30px rgba(74, 222, 128, 0.7);
+}
+
+/* Header Waiting Button (Host - disabled while waiting for guest) */
+.btn-waiting-header {
+  height: 46px;
+  padding: 0 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  font-weight: bold;
+  border: none;
+  border-radius: 12px;
+  cursor: not-allowed;
+  background: linear-gradient(135deg, var(--accent), var(--secondary));
+  color: rgba(255, 255, 255, 0.8);
+  box-shadow: 0 4px 20px rgba(83, 52, 131, 0.4);
+  transition: all 0.3s ease;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.btn-waiting-header:disabled {
+  opacity: 0.9;
+}
+
+/* Start Game Button (Footer - Legacy) */
 .btn-start {
   padding: 1rem 2.5rem;
   font-size: 1.3rem;
@@ -479,12 +701,28 @@ body {
   transform: translateY(0) scale(0.98);
 }
 
-/* Waiting for Host */
-.waiting-host {
-  color: var(--warning);
-  font-size: 1rem;
-  margin-top: 0.75rem;
-  animation: blink 1.5s ease-in-out infinite;
+/* Guest Ready Button (Footer - Legacy) */
+.btn-ready {
+  padding: 1rem 2.5rem;
+  font-size: 1.3rem;
+  font-weight: bold;
+  border: none;
+  border-radius: 14px;
+  cursor: pointer;
+  background: linear-gradient(135deg, var(--warning), #f59e0b);
+  color: #1a1a2e;
+  box-shadow: 0 4px 25px rgba(251, 191, 36, 0.5);
+  transition: all 0.3s ease;
+  margin-top: 1rem;
+}
+
+.btn-ready:hover {
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 0 8px 35px rgba(251, 191, 36, 0.7);
+}
+
+.btn-ready:active {
+  transform: translateY(0) scale(0.98);
 }
 
 /* Pan Hint */

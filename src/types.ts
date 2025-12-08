@@ -10,6 +10,7 @@ export interface Room {
     hostNickname: string;
     guestId: string | null;
     guestNickname: string | null;
+    guestReady: boolean; // Guest clicked ready button
     status: 'waiting' | 'ready' | 'playing' | 'finished';
     currentTurn: 'white' | 'black';
     turnStartTime: number;
@@ -46,4 +47,18 @@ export interface ChessPiece {
     type: PieceType;
     color: PieceColor;
     square: string;
+}
+
+// User account for registration/login
+export interface User {
+    id: string;
+    username: string;
+    passwordHash: string; // Simple hash for demo purposes
+    nickname: string;
+    createdAt: number;
+}
+
+// Admin config (stored in Firebase)
+export interface AdminConfig {
+    registrationCode: string; // 4-digit code required for registration
 }
