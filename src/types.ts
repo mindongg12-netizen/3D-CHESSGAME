@@ -8,19 +8,31 @@ export interface Room {
     code: string;
     hostId: string;
     hostNickname: string;
+    hostRecord?: { wins: number; losses: number };
     guestId: string | null;
     guestNickname: string | null;
-    guestReady: boolean; // Guest clicked ready button
-    status: 'waiting' | 'ready' | 'playing' | 'finished';
+    guestRecord?: { wins: number; losses: number } | null;
+    guestReady: boolean;
+    status: 'waiting' | 'ready' | 'playing' | 'paused' | 'finished';
     currentTurn: 'white' | 'black';
     turnStartTime: number;
-    fen: string; // FEN notation for chess position
+    fen: string;
     lastMove: { from: string; to: string } | null;
     winner: 'host' | 'guest' | 'draw' | null;
-    loserStarts: boolean; // If true, loser of previous game starts
+    loserStarts: boolean;
     previousLoser: 'host' | 'guest' | null;
     messages?: ChatMessage[];
+    // 연결 상태 추적
+    hostLastActive: number;
+    guestLastActive: number;
+    disconnectedPlayer: 'host' | 'guest' | null;
+    disconnectedAt: number | null;
+    // 방 설정
+    isPrivate: boolean;
+    createdAt: number;
 }
+
+
 
 export interface ChatMessage {
     id: string;
@@ -56,7 +68,11 @@ export interface User {
     passwordHash: string; // Simple hash for demo purposes
     nickname: string;
     createdAt: number;
+    wins: number;      // 승리 횟수
+    losses: number;    // 패배 횟수
+    draws: number;     // 무승부 횟수
 }
+
 
 // Admin config (stored in Firebase)
 export interface AdminConfig {

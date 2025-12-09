@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls } from '@react-three/drei';
+import { OrbitControls, Stars } from '@react-three/drei';
 import { Chess } from 'chess.js';
 import { ref, set, onValue, off, remove, get } from 'firebase/database';
 import { signInAnonymously } from 'firebase/auth';
@@ -29,15 +29,15 @@ function ChessPiece3D({
 }) {
   // Enhanced colors with better contrast
   const isWhite = piece?.color === 'w';
-  const baseColor = isWhite ? '#faf0e6' : '#3d3530';      // Dark bronze for black
-  const accentColor = isWhite ? '#d4c4b0' : '#4a4540';    // Slightly lighter bronze
+  const baseColor = isWhite ? '#faf0e6' : '#5c4a3d';      // Lighter brown for black
+  const accentColor = isWhite ? '#d4c4b0' : '#6d5a4a';    // Slightly lighter brown
   const highlightColor = isWhite ? '#ffd700' : '#e8e8e8'; // Gold for white, Silver for black
   const edgeColor = '#ffffff';  // White edge lines for black pieces
 
   // Material properties - black pieces more metallic/shiny
   const metalness = isWhite ? 0.15 : 0.75;
   const roughness = isWhite ? 0.3 : 0.15;
-  const emissive = isSelected ? '#22ff22' : isValidMove ? '#4488ff' : (isWhite ? '#000000' : '#3d2817');
+  const emissive = isSelected ? '#22ff22' : isValidMove ? '#4488ff' : (isWhite ? '#000000' : '#4a3828');
   const emissiveIntensity = isSelected ? 0.4 : isValidMove ? 0.3 : (isWhite ? 0 : 0.2);
 
   // Edge line material for black pieces - glowing silver/white lines
@@ -284,7 +284,7 @@ function ChessPiece3D({
         );
       case 'n': // Knight - horse head
         return (
-          <group>
+          <group rotation={[0, isWhite ? 0 : Math.PI, 0]}>
             {/* Base */}
             <mesh position={[0, 0.08, 0]} castShadow>
               <cylinderGeometry args={[0.3, 0.33, 0.16, 32]} />
@@ -490,7 +490,119 @@ function ChessBoard3D({
   );
 }
 
+// Leaderboard Component
+function Leaderboard() {
+  const [users, setUsers] = useState<User[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const usersRef = ref(db, 'users');
+
+
+    onValue(usersRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        const userList = Object.values(data) as User[];
+        // 승률 기준 정렬 (게임 수가 0인 경우 제외)
+        const sortedUsers = userList
+          .map(user => ({
+            ...user,
+            wins: user.wins || 0,
+            losses: user.losses || 0,
+            draws: user.draws || 0,
+          }))
+          .filter(user => (user.wins + user.losses + user.draws) > 0)
+          .sort((a, b) => {
+            const totalA = a.wins + a.losses + a.draws;
+            const totalB = b.wins + b.losses + b.draws;
+            const winRateA = totalA > 0 ? a.wins / totalA : 0;
+            const winRateB = totalB > 0 ? b.wins / totalB : 0;
+
+            // 승률이 같으면 승리 수로 정렬
+            if (winRateB === winRateA) {
+              return b.wins - a.wins;
+            }
+            return winRateB - winRateA;
+          })
+          .slice(0, 10); // 상위 10명
+
+        setUsers(sortedUsers);
+      } else {
+        setUsers([]);
+      }
+      setIsLoading(false);
+    });
+
+    return () => off(usersRef);
+  }, []);
+
+  const getWinRate = (user: User) => {
+    const total = (user.wins || 0) + (user.losses || 0) + (user.draws || 0);
+    if (total === 0) return 0;
+    return Math.round(((user.wins || 0) / total) * 100);
+  };
+
+  const getRankClass = (index: number) => {
+    if (index === 0) return 'rank-gold';
+    if (index === 1) return 'rank-silver';
+    if (index === 2) return 'rank-bronze';
+    return '';
+  };
+
+  const getRankEmoji = (index: number) => {
+    if (index === 0) return '🥇';
+    if (index === 1) return '🥈';
+    if (index === 2) return '🥉';
+    return `${index + 1}`;
+  };
+
+  if (isLoading) {
+    return (
+      <div className="leaderboard">
+        <h3 className="leaderboard-title">🏆 전적 순위표</h3>
+        <p className="leaderboard-loading">로딩 중...</p>
+      </div>
+    );
+  }
+
+  if (users.length === 0) {
+    return (
+      <div className="leaderboard">
+        <h3 className="leaderboard-title">🏆 전적 순위표</h3>
+        <p className="leaderboard-empty">아직 게임 기록이 없습니다</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="leaderboard">
+      <h3 className="leaderboard-title">🏆 전적 순위표</h3>
+      <div className="leaderboard-table">
+        <div className="leaderboard-header">
+          <span className="col-rank">순위</span>
+          <span className="col-name">닉네임</span>
+          <span className="col-wins">승</span>
+          <span className="col-losses">패</span>
+          <span className="col-draws">무</span>
+          <span className="col-rate">승률</span>
+        </div>
+        {users.map((user, index) => (
+          <div key={user.id} className={`leaderboard-row ${getRankClass(index)}`}>
+            <span className="col-rank">{getRankEmoji(index)}</span>
+            <span className="col-name" title={user.nickname}>{user.nickname}</span>
+            <span className="col-wins">{user.wins || 0}</span>
+            <span className="col-losses">{user.losses || 0}</span>
+            <span className="col-draws">{user.draws || 0}</span>
+            <span className="col-rate">{getWinRate(user)}%</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // Timer Component
+
 function Timer({ timeLeft, isMyTurn }: { timeLeft: number; isMyTurn: boolean }) {
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -587,6 +699,38 @@ function Chat({
   );
 }
 
+// Paused Overlay Component - 상대방 연결 끊김 시 표시
+function PausedOverlay({ disconnectedAt }: { disconnectedAt: number }) {
+  const [remainingTime, setRemainingTime] = useState(60);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - disconnectedAt) / 1000);
+      const remaining = Math.max(0, 60 - elapsed);
+      setRemainingTime(remaining);
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [disconnectedAt]);
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  return (
+    <div className="paused-overlay">
+      <div className="paused-content">
+        <div className="paused-icon">⏳</div>
+        <h2>상대방 연결 대기 중...</h2>
+        <div className="paused-timer">{formatTime(remainingTime)}</div>
+        <p>상대방이 1분 내로 돌아오지 않으면<br />자동으로 승리합니다</p>
+      </div>
+    </div>
+  );
+}
+
 // Result Popup Component
 function ResultPopup({
   winner,
@@ -637,7 +781,7 @@ function Lobby({
   onCreateRoom,
   onJoinRoom
 }: {
-  onCreateRoom: (nickname: string) => void;
+  onCreateRoom: (nickname: string, isPrivate: boolean) => void;
   onJoinRoom: (code: string, nickname: string) => void;
 }) {
   const [mode, setMode] = useState<'menu' | 'create' | 'join' | 'register' | 'login'>('menu');
@@ -645,6 +789,8 @@ function Lobby({
   const [roomCode, setRoomCode] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [isPrivate, setIsPrivate] = useState(false);
+  const [availableRooms, setAvailableRooms] = useState<Room[]>([]);
 
   // Auth states
   const [username, setUsername] = useState('');
@@ -666,12 +812,63 @@ function Lobby({
     }
   }, []);
 
+  // 공개 방 목록 실시간 구독
+  useEffect(() => {
+    const roomsRef = ref(db, 'rooms');
+
+    onValue(roomsRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        const roomList = Object.values(data) as Room[];
+        const now = Date.now();
+
+        // 공개 방 필터링:
+        // 1. 대기 중 + 게스트 없음 + 호스트 활성 (1분 이내)
+        // 2. 일시정지 상태 + 누군가 활성 (2분 이내)
+        const openRooms = roomList.filter(room => {
+          if (room.isPrivate) return false;
+
+          // 대기 중인 방: 호스트가 1분 이상 비활성이면 제외
+          if (room.status === 'waiting' && !room.guestId) {
+            const hostInactive = (now - room.hostLastActive) > 60000; // 1분
+            return !hostInactive;
+          }
+
+          // 일시정지 방: 양쪽 모두 2분 이상 비활성이면 제외
+          if (room.status === 'paused' && room.disconnectedPlayer) {
+            const hostInactive = (now - room.hostLastActive) > 120000; // 2분
+            const guestInactive = (now - room.guestLastActive) > 120000; // 2분
+            return !(hostInactive && guestInactive);
+          }
+
+          return false;
+        }).sort((a, b) => b.createdAt - a.createdAt); // 최신순
+        setAvailableRooms(openRooms);
+      } else {
+        setAvailableRooms([]);
+      }
+    });
+
+    return () => off(roomsRef);
+  }, []);
+
+  // Check if user is already logged in (from localStorage)
+  useEffect(() => {
+    const savedUser = localStorage.getItem('chessUser');
+    if (savedUser) {
+      const user = JSON.parse(savedUser) as User;
+      setCurrentUser(user);
+      setNickname(user.nickname);
+      setIsLoggedIn(true);
+    }
+  }, []);
+
   const handleCreate = () => {
     if (!nickname.trim()) {
       setError('닉네임을 입력해주세요');
       return;
     }
-    onCreateRoom(nickname.trim());
+    onCreateRoom(nickname.trim(), isPrivate);
   };
 
   const handleJoin = () => {
@@ -756,8 +953,12 @@ function Lobby({
         username: username.toLowerCase(),
         passwordHash: simpleHash(password),
         nickname: nickname.trim(),
-        createdAt: Date.now()
+        createdAt: Date.now(),
+        wins: 0,
+        losses: 0,
+        draws: 0
       };
+
 
       await set(ref(db, `users/${userId}`), newUser);
 
@@ -855,28 +1056,32 @@ function Lobby({
       )}
 
       {mode === 'menu' && (
-        <div className="menu-buttons">
-          <button onClick={() => setMode('create')} className="btn-primary">
-            방 만들기
-          </button>
-          <button onClick={() => setMode('join')} className="btn-secondary">
-            방 참가하기
-          </button>
-          {!isLoggedIn && (
-            <>
-              <div className="menu-divider">
-                <span>계정</span>
-              </div>
-              <button onClick={() => setMode('login')} className="btn-auth">
-                🔑 로그인
-              </button>
-              <button onClick={() => setMode('register')} className="btn-auth-secondary">
-                📝 회원가입
-              </button>
-            </>
-          )}
+        <div className="lobby-content">
+          <div className="menu-buttons">
+            <button onClick={() => setMode('create')} className="btn-primary">
+              방 만들기
+            </button>
+            <button onClick={() => setMode('join')} className="btn-secondary">
+              방 참가하기
+            </button>
+            {!isLoggedIn && (
+              <>
+                <div className="menu-divider">
+                  <span>계정</span>
+                </div>
+                <button onClick={() => setMode('login')} className="btn-auth">
+                  🔑 로그인
+                </button>
+                <button onClick={() => setMode('register')} className="btn-auth-secondary">
+                  📝 회원가입
+                </button>
+              </>
+            )}
+          </div>
+          <Leaderboard />
         </div>
       )}
+
 
       {mode === 'create' && (
         <div className="form">
@@ -888,17 +1093,60 @@ function Lobby({
             onChange={(e) => setNickname(e.target.value)}
             maxLength={10}
           />
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={isPrivate}
+              onChange={(e) => setIsPrivate(e.target.checked)}
+            />
+            <span>🔒 비공개 방</span>
+          </label>
           {error && <p className="error">{error}</p>}
           <div className="form-buttons">
             <button onClick={handleCreate} className="btn-primary">생성</button>
-            <button onClick={() => { setMode('menu'); setError(''); }} className="btn-secondary">취소</button>
+            <button onClick={() => { setMode('menu'); setError(''); setIsPrivate(false); }} className="btn-secondary">취소</button>
           </div>
         </div>
       )}
 
       {mode === 'join' && (
-        <div className="form">
+        <div className="form join-form">
           <h2>방 참가하기</h2>
+
+          {/* 공개 방 목록 */}
+          {availableRooms.length > 0 && (
+            <div className="room-list">
+              <h3>📋 참가 가능한 방</h3>
+              <div className="room-list-items">
+                {availableRooms.slice(0, 5).map((room) => (
+                  <div
+                    key={room.code}
+                    className={`room-item ${room.status === 'paused' ? 'room-paused' : ''}`}
+                    onClick={() => setRoomCode(room.code)}
+                  >
+                    <span className="room-host">
+                      {room.status === 'paused' ? '⏳' : '🎲'} {room.hostNickname}
+                      {room.status === 'paused' && (
+                        <span className="room-status-badge">재접속</span>
+                      )}
+                    </span>
+                    <span className="room-code-badge">{room.code}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {availableRooms.length === 0 && (
+            <div className="room-list-empty">
+              <p>현재 대기 중인 공개 방이 없습니다</p>
+            </div>
+          )}
+
+          <div className="divider">
+            <span>또는 코드로 참가</span>
+          </div>
+
           <input
             type="text"
             placeholder="닉네임 입력"
@@ -920,7 +1168,7 @@ function Lobby({
           {error && <p className="error">{error}</p>}
           <div className="form-buttons">
             <button onClick={handleJoin} className="btn-primary">참가</button>
-            <button onClick={() => { setMode('menu'); setError(''); }} className="btn-secondary">취소</button>
+            <button onClick={() => { setMode('menu'); setError(''); setRoomCode(''); }} className="btn-secondary">취소</button>
           </div>
         </div>
       )}
@@ -1019,6 +1267,12 @@ function Lobby({
           </p>
         </div>
       )}
+
+      {/* Footer Credit */}
+      <div className="credit-footer">
+        <span>Crafted by</span>
+        <span className="credit-name">T.MIN</span>
+      </div>
     </div>
   );
 }
@@ -1028,7 +1282,7 @@ function App() {
   const [playerId, setPlayerId] = useState<string | null>(null);
   const [room, setRoom] = useState<Room | null>(null);
   const [isHost, setIsHost] = useState(false);
-  const [waiting, setWaiting] = useState(false);
+  const [_waiting, setWaiting] = useState(false);
   const [error, setError] = useState('');
 
   const [chess] = useState(new Chess());
@@ -1037,9 +1291,158 @@ function App() {
   const [validMoves, setValidMoves] = useState<string[]>([]);
   const [timeLeft, setTimeLeft] = useState(30);
   const [showResult, setShowResult] = useState(false);
+  const [recordUpdated, setRecordUpdated] = useState(false);
+  const [myRecord, setMyRecord] = useState<{ wins: number; losses: number } | null>(null);
 
   const timerRef = useRef<number | null>(null);
   const roomRef = useRef<ReturnType<typeof ref> | null>(null);
+
+  // 내 전적 가져오기
+  useEffect(() => {
+    const savedUser = localStorage.getItem('chessUser');
+    if (savedUser) {
+      const user = JSON.parse(savedUser) as User;
+      setMyRecord({ wins: user.wins || 0, losses: user.losses || 0 });
+    }
+  }, [room?.winner]); // winner 변경 시 전적 업데이트 반영
+
+  // 게임 종료 시 전적 업데이트
+  const updatePlayerRecord = useCallback(async (winner: 'host' | 'guest' | 'draw') => {
+    // localStorage에서 로그인된 유저 정보 확인
+    const savedUser = localStorage.getItem('chessUser');
+    if (!savedUser) return; // 비로그인 유저는 전적 기록 안함
+
+    const currentUser = JSON.parse(savedUser) as User;
+
+    try {
+      // Firebase에서 해당 유저 정보 가져오기
+      const userRef = ref(db, `users/${currentUser.id}`);
+      const userSnapshot = await get(userRef);
+      const userData = userSnapshot.val() as User | null;
+
+      if (!userData) return;
+
+      // 내가 호스트인지 게스트인지 확인하고 전적 계산
+      const iAmHost = isHost;
+      let newWins = userData.wins || 0;
+      let newLosses = userData.losses || 0;
+      let newDraws = userData.draws || 0;
+
+      if (winner === 'draw') {
+        newDraws++;
+      } else if ((winner === 'host' && iAmHost) || (winner === 'guest' && !iAmHost)) {
+        // 내가 이김
+        newWins++;
+      } else {
+        // 내가 짐
+        newLosses++;
+      }
+
+      // Firebase 업데이트
+      await set(userRef, {
+        ...userData,
+        wins: newWins,
+        losses: newLosses,
+        draws: newDraws
+      });
+
+      // localStorage도 업데이트
+      localStorage.setItem('chessUser', JSON.stringify({
+        ...currentUser,
+        wins: newWins,
+        losses: newLosses,
+        draws: newDraws
+      }));
+
+      console.log('전적 업데이트 완료:', { wins: newWins, losses: newLosses, draws: newDraws });
+    } catch (error) {
+      console.error('전적 업데이트 실패:', error);
+    }
+  }, [isHost]);
+
+  // 게임 결과 감지 및 전적 업데이트
+  useEffect(() => {
+    if (room?.winner && !recordUpdated) {
+      updatePlayerRecord(room.winner);
+      setRecordUpdated(true);
+    }
+    // 새 게임 시작 시 recordUpdated 리셋
+    if (room?.status === 'playing' && recordUpdated) {
+      setRecordUpdated(false);
+    }
+  }, [room?.winner, room?.status, recordUpdated, updatePlayerRecord]);
+
+  // 하트비트 시스템 - 3초마다 lastActive 업데이트 (더 자주)
+  useEffect(() => {
+    if (!room || !roomRef.current || room.status === 'finished') return;
+    if (room.status !== 'playing' && room.status !== 'paused') return;
+
+    // 즉시 하트비트 한 번 보내기
+    const sendHeartbeat = async () => {
+      if (!roomRef.current || !room) return;
+      const fieldToUpdate = isHost ? 'hostLastActive' : 'guestLastActive';
+      await set(ref(db, `rooms/${room.code}/${fieldToUpdate}`), Date.now());
+    };
+
+    sendHeartbeat(); // 즉시 실행
+
+    const heartbeat = setInterval(sendHeartbeat, 3000); // 3초마다
+
+    return () => clearInterval(heartbeat);
+  }, [room?.code, room?.status, isHost]);
+
+  // 연결 끊김 감지 및 처리
+  useEffect(() => {
+    if (!room || !roomRef.current) return;
+    if (room.status !== 'playing' && room.status !== 'paused') return;
+
+    const checkConnection = setInterval(async () => {
+      if (!roomRef.current || !room) return;
+
+      const now = Date.now();
+      const opponentLastActive = isHost ? room.guestLastActive : room.hostLastActive;
+      const timeSinceActive = now - opponentLastActive;
+
+      // 상대방이 20초 이상 응답 없음 - 게임 일시정지 (여유롭게)
+      if (timeSinceActive > 20000 && room.status === 'playing' && !room.disconnectedPlayer) {
+        await set(roomRef.current, {
+          ...room,
+          status: 'paused',
+          disconnectedPlayer: isHost ? 'guest' : 'host',
+          disconnectedAt: now
+        });
+      }
+
+      // 일시정지 상태에서 60초 초과 - 자동 승리
+      if (room.status === 'paused' && room.disconnectedAt) {
+        const pausedDuration = now - room.disconnectedAt;
+        if (pausedDuration > 60000) {
+          // 나간 사람이 지고, 남은 사람이 이김
+          const winner = room.disconnectedPlayer === 'host' ? 'guest' : 'host';
+          await set(roomRef.current, {
+            ...room,
+            status: 'finished',
+            winner: winner,
+            previousLoser: room.disconnectedPlayer,
+            disconnectedPlayer: null,
+            disconnectedAt: null
+          });
+        }
+      }
+
+      // 상대방이 다시 연결됨 - 게임 재개 (15초 이내면 복귀)
+      if (room.status === 'paused' && timeSinceActive < 15000 && room.disconnectedPlayer) {
+        await set(roomRef.current, {
+          ...room,
+          status: 'playing',
+          disconnectedPlayer: null,
+          disconnectedAt: null
+        });
+      }
+    }, 3000); // 3초마다 체크
+
+    return () => clearInterval(checkConnection);
+  }, [room, isHost]);
 
   // Initialize anonymous auth
   useEffect(() => {
@@ -1258,25 +1661,39 @@ function App() {
   };
 
   // Create room
-  const createRoom = async (nickname: string) => {
+  const createRoom = async (nickname: string, isPrivate: boolean = false) => {
     if (!playerId) return;
+
+    // 내 전적 가져오기
+    const savedUser = localStorage.getItem('chessUser');
+    const myRecord = savedUser
+      ? { wins: (JSON.parse(savedUser) as User).wins || 0, losses: (JSON.parse(savedUser) as User).losses || 0 }
+      : undefined;
 
     const code = generateRoomCode();
     const newRoom: Room = {
       code,
       hostId: playerId,
       hostNickname: nickname,
+      hostRecord: myRecord,
       guestId: null,
       guestNickname: null,
+      guestRecord: null,
       guestReady: false,
       status: 'waiting',
       currentTurn: 'white',
-      turnStartTime: Date.now(), // start timer immediately
+      turnStartTime: Date.now(),
       fen: chess.fen(),
       lastMove: null,
       winner: null,
       loserStarts: false,
-      previousLoser: null
+      previousLoser: null,
+      hostLastActive: Date.now(),
+      guestLastActive: 0,
+      disconnectedPlayer: null,
+      disconnectedAt: null,
+      isPrivate: isPrivate,
+      createdAt: Date.now()
     };
 
     roomRef.current = ref(db, `rooms/${code}`);
@@ -1313,6 +1730,12 @@ function App() {
   const joinRoom = async (code: string, nickname: string) => {
     if (!playerId) return;
 
+    // 내 전적 가져오기
+    const savedUser = localStorage.getItem('chessUser');
+    const myRecord = savedUser
+      ? { wins: (JSON.parse(savedUser) as User).wins || 0, losses: (JSON.parse(savedUser) as User).losses || 0 }
+      : undefined;
+
     roomRef.current = ref(db, `rooms/${code}`);
 
     // Check if room exists
@@ -1337,8 +1760,10 @@ function App() {
           ...data,
           guestId: playerId,
           guestNickname: nickname,
+          guestRecord: myRecord || null,
           guestReady: false,
-          status: 'waiting' as const  // Stays waiting until guest clicks ready
+          status: 'waiting' as const,
+          guestLastActive: Date.now()
         };
         await set(roomRef.current!, updatedRoom);
         // Don't setRoom here, will be updated by onValue listener on next trigger
@@ -1373,6 +1798,77 @@ function App() {
     setShowResult(false);
     setSelectedSquare(null);
     setValidMoves([]);
+  };
+
+  // Resign button handler
+  const handleResign = async () => {
+    if (!room || !roomRef.current) return;
+    if (room.status !== 'playing') return;
+
+    // 확인 대화 상자
+    if (!window.confirm('정말 기권하시겠습니까? 상대방에게 승리를 넘기게 됩니다.')) {
+      return;
+    }
+
+    // 기권한 사람이 지고, 상대방이 이김
+    const winner = isHost ? 'guest' : 'host';
+    const loser = isHost ? 'host' : 'guest';
+
+    await set(roomRef.current, {
+      ...room,
+      status: 'finished',
+      winner: winner,
+      previousLoser: loser
+    });
+  };
+
+  // Go Home button handler
+  const handleGoHome = async () => {
+    if (!room || !roomRef.current) return;
+
+    // 게임 중이면 경고
+    if (room.status === 'playing' || room.status === 'paused') {
+      if (!window.confirm('게임을 나가면 패배 처리됩니다. 정말 나가시겠습니까?')) {
+        return;
+      }
+
+      // 나간 사람이 패배
+      const winner = isHost ? 'guest' : 'host';
+      const loser = isHost ? 'host' : 'guest';
+
+      await set(roomRef.current, {
+        ...room,
+        status: 'finished',
+        winner: winner,
+        previousLoser: loser
+      });
+    } else {
+      // 대기 중이면 그냥 방 삭제 또는 나가기
+      if (isHost) {
+        await remove(roomRef.current);
+      } else {
+        await set(roomRef.current, {
+          ...room,
+          guestId: null,
+          guestNickname: null,
+          guestReady: false
+        });
+      }
+    }
+
+    // 로비로 돌아가기
+    setRoom(null);
+    setIsHost(false);
+    setWaiting(false);
+    setShowResult(false);
+    setSelectedSquare(null);
+    setValidMoves([]);
+    chess.reset();
+    updatePieces();
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+    roomRef.current = null;
   };
 
   // Guest ready button
@@ -1444,6 +1940,9 @@ function App() {
   if (isHost && !room.guestId) {
     return (
       <div className="waiting">
+        <button onClick={handleGoHome} className="btn-home-waiting" title="홈으로 돌아가기">
+          🏠 홈으로
+        </button>
         <h2>대기 중</h2>
         <p>방 코드: <span className="room-code">{room.code}</span></p>
         <p>상대방이 참가하기를 기다리는 중...</p>
@@ -1455,13 +1954,29 @@ function App() {
   return (
     <div className="game-container">
       <div className="game-header">
-        <div className="player-info opponent">
-          <span className="nickname">{isHost ? room.guestNickname : room.hostNickname}</span>
-          <span className="color">({getMyColor() === 'white' ? '흑' : '백'})</span>
+        <div className="player-info me">
+          <span className="nickname">
+            {isHost ? room.hostNickname : room.guestNickname}
+            {myRecord && (
+              <span className="player-record">
+                <span className="record-win">{myRecord.wins}승</span>
+                <span className="record-loss">{myRecord.losses}패</span>
+              </span>
+            )}
+          </span>
+          <span className="color">({getMyColor() === 'white' ? '백' : '흑'})</span>
         </div>
         {/* Timer only shows during playing state */}
         {room.status === 'playing' ? (
-          <Timer timeLeft={timeLeft} isMyTurn={isMyTurn()} />
+          <div className="timer-section">
+            <Timer timeLeft={timeLeft} isMyTurn={isMyTurn()} />
+            <button onClick={handleResign} className="btn-resign">
+              🏳️ 기권
+            </button>
+            <button onClick={handleGoHome} className="btn-home-game">
+              🏠 홈
+            </button>
+          </div>
         ) : (
           <div className="ready-buttons">
             {/* Guest: Ready Button */}
@@ -1490,33 +2005,81 @@ function App() {
             )}
           </div>
         )}
-        <div className="player-info me">
-          <span className="nickname">{isHost ? room.hostNickname : room.guestNickname}</span>
-          <span className="color">({getMyColor() === 'white' ? '백' : '흑'})</span>
+        <div className="player-info opponent">
+          <span className="nickname">
+            {isHost ? room.guestNickname : room.hostNickname}
+            {(() => {
+              const opponentRecord = isHost ? room.guestRecord : room.hostRecord;
+              return opponentRecord && (
+                <span className="player-record">
+                  <span className="record-win">{opponentRecord.wins}승</span>
+                  <span className="record-loss">{opponentRecord.losses}패</span>
+                </span>
+              );
+            })()}
+          </span>
+          <span className="color">({getMyColor() === 'white' ? '흑' : '백'})</span>
         </div>
       </div>
 
       <div className="game-canvas">
         <Canvas shadows camera={{ position: [0, 10, 10], fov: 45 }}>
-          {/* Ambient light for base illumination */}
-          <ambientLight intensity={0.4} />
-          {/* Main directional light with shadows */}
+          {/* Starry space background */}
+          <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
+
+          {/* Ambient light for base illumination - warmer tone */}
+          <ambientLight intensity={0.3} color="#ffe4c4" />
+
+          {/* Main key light - warm sunlight from top-right */}
           <directionalLight
-            position={[5, 12, 5]}
-            intensity={1.2}
+            position={[8, 15, 8]}
+            intensity={1.5}
+            color="#fff8e7"
             castShadow
             shadow-mapSize-width={2048}
             shadow-mapSize-height={2048}
-            shadow-camera-far={30}
-            shadow-camera-left={-10}
-            shadow-camera-right={10}
-            shadow-camera-top={10}
-            shadow-camera-bottom={-10}
+            shadow-camera-far={50}
+            shadow-camera-left={-12}
+            shadow-camera-right={12}
+            shadow-camera-top={12}
+            shadow-camera-bottom={-12}
+            shadow-bias={-0.0001}
           />
-          {/* Fill light */}
-          <directionalLight position={[-5, 8, -5]} intensity={0.4} />
-          {/* Rim light for dramatic effect */}
-          <pointLight position={[0, 15, 0]} intensity={0.3} />
+
+          {/* Fill light - cooler tone from left */}
+          <directionalLight
+            position={[-8, 10, -8]}
+            intensity={0.5}
+            color="#b8d4ff"
+          />
+
+          {/* Rim/Back light - dramatic edge lighting */}
+          <directionalLight
+            position={[0, 8, -12]}
+            intensity={0.6}
+            color="#ffd700"
+          />
+
+          {/* Top spotlight for dramatic center focus */}
+          <spotLight
+            position={[0, 20, 0]}
+            angle={0.5}
+            penumbra={0.8}
+            intensity={0.8}
+            color="#ffffff"
+            castShadow
+            shadow-mapSize-width={1024}
+            shadow-mapSize-height={1024}
+          />
+
+          {/* Accent point lights for piece highlighting */}
+          <pointLight position={[5, 6, 5]} intensity={0.3} color="#ff6b6b" distance={15} />
+          <pointLight position={[-5, 6, -5]} intensity={0.3} color="#4dabf7" distance={15} />
+
+          {/* Central hemisphere light for soft fill */}
+          <hemisphereLight
+            args={['#87ceeb', '#2d1b0e', 0.4]}
+          />
           <ChessBoard3D
             pieces={pieces}
             selectedSquare={selectedSquare}
@@ -1536,8 +2099,18 @@ function App() {
 
       <div className="game-footer">
         <p className="room-code">방 코드: {room.code}</p>
+        {room.status === 'playing' && (
+          <button onClick={handleResign} className="btn-resign">
+            🏳️ 기권
+          </button>
+        )}
         <p className="pan-hint">💡 마우스 오른쪽 버튼 드래그로 보드 이동</p>
       </div>
+
+      {/* Paused Overlay - 상대방 연결 끊김 시 */}
+      {room.status === 'paused' && room.disconnectedAt && (
+        <PausedOverlay disconnectedAt={room.disconnectedAt} />
+      )}
 
       {showResult && room.winner && (
         <ResultPopup
