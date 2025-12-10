@@ -1292,19 +1292,9 @@ function App() {
   const [timeLeft, setTimeLeft] = useState(30);
   const [showResult, setShowResult] = useState(false);
   const [recordUpdated, setRecordUpdated] = useState(false);
-  const [myRecord, setMyRecord] = useState<{ wins: number; losses: number } | null>(null);
 
   const timerRef = useRef<number | null>(null);
   const roomRef = useRef<ReturnType<typeof ref> | null>(null);
-
-  // 내 전적 가져오기
-  useEffect(() => {
-    const savedUser = localStorage.getItem('chessUser');
-    if (savedUser) {
-      const user = JSON.parse(savedUser) as User;
-      setMyRecord({ wins: user.wins || 0, losses: user.losses || 0 });
-    }
-  }, [room?.winner]); // winner 변경 시 전적 업데이트 반영
 
   // 게임 종료 시 전적 업데이트
   const updatePlayerRecord = useCallback(async (winner: 'host' | 'guest' | 'draw') => {
@@ -1373,15 +1363,22 @@ function App() {
   }, [room?.winner, room?.status, recordUpdated, updatePlayerRecord]);
 
   // 하트비트 시스템 - 3초마다 lastActive 업데이트 (더 자주)
+  // paused 상태에서도 하트비트를 보내야 재연결 감지가 가능
   useEffect(() => {
     if (!room || !roomRef.current || room.status === 'finished') return;
-    if (room.status !== 'playing' && room.status !== 'paused') return;
+    // waiting, ready 상태에서는 하트비트 불필요
+    if (room.status === 'waiting' || room.status === 'ready') return;
 
     // 즉시 하트비트 한 번 보내기
     const sendHeartbeat = async () => {
       if (!roomRef.current || !room) return;
-      const fieldToUpdate = isHost ? 'hostLastActive' : 'guestLastActive';
-      await set(ref(db, `rooms/${room.code}/${fieldToUpdate}`), Date.now());
+      try {
+        const fieldToUpdate = isHost ? 'hostLastActive' : 'guestLastActive';
+        await set(ref(db, `rooms/${room.code}/${fieldToUpdate}`), Date.now());
+        console.log('Heartbeat sent:', fieldToUpdate, Date.now());
+      } catch (error) {
+        console.error('Heartbeat failed:', error);
+      }
     };
 
     sendHeartbeat(); // 즉시 실행
@@ -1403,8 +1400,16 @@ function App() {
       const opponentLastActive = isHost ? room.guestLastActive : room.hostLastActive;
       const timeSinceActive = now - opponentLastActive;
 
+      console.log('Connection check:', {
+        status: room.status,
+        disconnectedPlayer: room.disconnectedPlayer,
+        timeSinceActive,
+        isHost
+      });
+
       // 상대방이 20초 이상 응답 없음 - 게임 일시정지 (여유롭게)
       if (timeSinceActive > 20000 && room.status === 'playing' && !room.disconnectedPlayer) {
+        console.log('Pausing game - opponent disconnected');
         await set(roomRef.current, {
           ...room,
           status: 'paused',
@@ -1417,6 +1422,7 @@ function App() {
       if (room.status === 'paused' && room.disconnectedAt) {
         const pausedDuration = now - room.disconnectedAt;
         if (pausedDuration > 60000) {
+          console.log('Auto-win - opponent timeout');
           // 나간 사람이 지고, 남은 사람이 이김
           const winner = room.disconnectedPlayer === 'host' ? 'guest' : 'host';
           await set(roomRef.current, {
@@ -1430,8 +1436,10 @@ function App() {
         }
       }
 
-      // 상대방이 다시 연결됨 - 게임 재개 (15초 이내면 복귀)
-      if (room.status === 'paused' && timeSinceActive < 15000 && room.disconnectedPlayer) {
+      // 상대방이 다시 연결됨 - 게임 재개
+      // 조건 완화: 30초 이내로 변경 (재접속 시간 여유 확보)
+      if (room.status === 'paused' && timeSinceActive < 30000 && room.disconnectedPlayer) {
+        console.log('Resuming game - opponent reconnected');
         await set(roomRef.current, {
           ...room,
           status: 'playing',
@@ -1954,71 +1962,80 @@ function App() {
   return (
     <div className="game-container">
       <div className="game-header">
-        <div className="player-info me">
-          <span className="nickname">
-            {isHost ? room.hostNickname : room.guestNickname}
-            {myRecord && (
-              <span className="player-record">
-                <span className="record-win">{myRecord.wins}승</span>
-                <span className="record-loss">{myRecord.losses}패</span>
-              </span>
-            )}
-          </span>
-          <span className="color">({getMyColor() === 'white' ? '백' : '흑'})</span>
-        </div>
-        {/* Timer only shows during playing state */}
-        {room.status === 'playing' ? (
-          <div className="timer-section">
-            <Timer timeLeft={timeLeft} isMyTurn={isMyTurn()} />
-            <button onClick={handleResign} className="btn-resign">
-              🏳️ 기권
-            </button>
-            <button onClick={handleGoHome} className="btn-home-game">
-              🏠 홈
-            </button>
-          </div>
-        ) : (
-          <div className="ready-buttons">
-            {/* Guest: Ready Button */}
-            {!isHost && room.guestReady !== true && (
-              <button onClick={handleGuestReady} className="btn-ready-header">
-                ✋ 게임 준비
+        {/* Row 1: 컨트롤 영역 (타이머/버튼 또는 준비/시작 버튼) */}
+        <div className="header-controls">
+          {room.status === 'playing' ? (
+            <div className="control-buttons">
+              <Timer timeLeft={timeLeft} isMyTurn={isMyTurn()} />
+              <button onClick={handleResign} className="btn-control btn-resign">
+                🏳️ 기권
               </button>
-            )}
-            {/* Guest: Waiting for host */}
-            {!isHost && room.guestReady === true && (
-              <div className="ready-status">
-                <span>✅ 준비 완료! 호스트 대기중...</span>
-              </div>
-            )}
-            {/* Host: Waiting for guest -> disabled button, Ready -> Start button */}
-            {isHost && (
-              room.guestReady === true ? (
-                <button onClick={handleStartGame} className="btn-start-header">
-                  🚀 게임 시작
+              <button onClick={handleGoHome} className="btn-control btn-home-game">
+                🏠 홈
+              </button>
+            </div>
+          ) : (
+            <div className="control-buttons ready-mode">
+              {/* Guest: Ready Button */}
+              {!isHost && room.guestReady !== true && (
+                <button onClick={handleGuestReady} className="btn-control btn-ready">
+                  ✋ 게임 준비
                 </button>
-              ) : (
-                <button className="btn-waiting-header" disabled>
-                  ⏳ 게스트 준비 대기중...
-                </button>
-              )
-            )}
+              )}
+              {/* Guest: Waiting for host */}
+              {!isHost && room.guestReady === true && (
+                <div className="btn-control ready-status">
+                  <span>✅ 준비 완료!</span>
+                </div>
+              )}
+              {/* Host: Waiting for guest -> disabled button, Ready -> Start button */}
+              {isHost && (
+                room.guestReady === true ? (
+                  <button onClick={handleStartGame} className="btn-control btn-start">
+                    🚀 게임 시작
+                  </button>
+                ) : (
+                  <button className="btn-control btn-waiting" disabled>
+                    ⏳ 대기중...
+                  </button>
+                )
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Row 2: 플레이어 정보 */}
+        <div className="header-players">
+          <div className="player-info me">
+            <span className="nickname">
+              {isHost ? room.hostNickname : room.guestNickname}
+              {(() => {
+                const myRecordFromRoom = isHost ? room.hostRecord : room.guestRecord;
+                return myRecordFromRoom && (
+                  <span className="player-record">
+                    <span className="record-win">{myRecordFromRoom.wins}승</span>
+                    <span className="record-loss">{myRecordFromRoom.losses}패</span>
+                  </span>
+                );
+              })()}
+            </span>
+            <span className="color">({getMyColor() === 'white' ? '백' : '흑'})</span>
           </div>
-        )}
-        <div className="player-info opponent">
-          <span className="nickname">
-            {isHost ? room.guestNickname : room.hostNickname}
-            {(() => {
-              const opponentRecord = isHost ? room.guestRecord : room.hostRecord;
-              return opponentRecord && (
-                <span className="player-record">
-                  <span className="record-win">{opponentRecord.wins}승</span>
-                  <span className="record-loss">{opponentRecord.losses}패</span>
-                </span>
-              );
-            })()}
-          </span>
-          <span className="color">({getMyColor() === 'white' ? '흑' : '백'})</span>
+          <div className="player-info opponent">
+            <span className="nickname">
+              {isHost ? room.guestNickname : room.hostNickname}
+              {(() => {
+                const opponentRecord = isHost ? room.guestRecord : room.hostRecord;
+                return opponentRecord && (
+                  <span className="player-record">
+                    <span className="record-win">{opponentRecord.wins}승</span>
+                    <span className="record-loss">{opponentRecord.losses}패</span>
+                  </span>
+                );
+              })()}
+            </span>
+            <span className="color">({getMyColor() === 'white' ? '흑' : '백'})</span>
+          </div>
         </div>
       </div>
 
